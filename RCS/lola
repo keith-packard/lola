@@ -165,75 +165,121 @@
 ; this section generates the 'follow' set for a non-terminal
 ;
 
-(defun follow-set-for-production (item non-terminal production)
-  (let ((rest))
-    (setq rest (clip-out-string (member item production)))
-    (if rest
-	(conc (if (cdr rest)
-		  (delete nil (first (cdr rest)))
-		else
-		  nil
-		  )
-	      (if (or (not (cdr rest))
-		      (member nil (first (cdr rest)))
-		      )
-		  (follow non-terminal non-terminals)
-		else
-		  nil
-		  )
-	      )
-     else
-	nil
+(defun remove-nil (stuff)
+  (cond (stuff
+	 (cond ((car stuff)
+		(cons (car stuff) (remove-nil (cdr stuff)))
+		)
+	       (t
+		(remove-nil (cdr stuff))
+		)
+	       )
+	 )
+	(t nil)
 	)
+  )
+
+(defun follow-in-production (item non-terminal production non-terminals)
+  (let ((rest) (firsts))
+    (cond ((setq rest (member item production))
+	   (setq rest (cdr rest))
+	   (setq firsts (first rest))
+	   (cond ((member nil firsts)
+		  (conc (remove-nil firsts)
+ 		  	(follow non-terminal non-terminals)
+			)
+		  )
+		 (t firsts)
+		 )
+	   )
+	  (t nil)
+	  )
     )
   )
     
-(defun follow-set-for-one (item non-terminal productions)
-  (if (= item non-terminal)
-      nil
-   elseif productions
-      (conc (follow-set-for-production item
+(defun follow-in-non-terminal (item non-terminal productions non-terminals)
+  (cond (productions
+	 (conc (follow-in-production item
+ 	 			     non-terminal
+				     (car productions)
+				     non-terminals)
+	       (follow-in-non-terminal item
 				       non-terminal
-				       (car productions)
+				       (cdr productions)
+				       non-terminals
 				       )
-	    (follow-set-for-one item
-				non-terminal
-				(cdr productions)
-				)
-	    )
-      else
-      nil
-      )
+	       )
+	 )
+	(t nil)
+	)
   )
 
-(defun follow-set (item non-terminal-list)
-  (if non-terminal-list
-      (conc (follow-set-for-one item
-				(car non-terminal-list)
-				(eval (car non-terminal-list))
-				)
-	    (follow-set item (cdr non-terminal-list))
-	    )
-   else
-      nil
-      )
+
+(defun follow-set (item non-terminal-list non-terminals)
+  (cond (non-terminal-list
+	 (cond ((= (car non-terminal-list) item)
+		(follow-set item
+			    (cdr non-terminal-list)
+			    non-terminals
+			    )
+		)
+	       (t
+	 	(conc (follow-in-non-terminal item
+			       	       	      (car non-terminal-list)
+			       	       	      (eval (car non-terminal-list))
+				       	      non-terminals
+			       	       	      )
+	       	      (follow-set item
+		       		  (cdr non-terminal-list)
+		       		  non-terminals
+		       		  )
+	       	      )
+		)
+	       )
+	 )
+	(t nil)
+	)
   )
-       
+
+(setq follow-list nil)
+
 (defun follow (item non-terminals)
   (let ((cache (symbol (list item non-terminals) follow-dictionary)))
-    (if (boundp cache)
-	(eval cache)
-     else
-	(set cache
-  	     (unique
-   	      (if (start-symbolp item)
-       		  (cons end-token (follow-set item non-terminals))
-       	       else
-       		  (follow-set item non-terminals)
-       		  )
-   	      )
-	     )
-	)
+    (cond ((boundp cache)
+	   (eval cache)
+	   )
+	  (t
+	   (cond ((member item follow-list)
+		  (error (strcat "lola: recursive follow set for symbol "
+				 (sprint item)
+				 )
+			 )
+		  )
+		 )
+	   (set cache
+		((lambda (follow-list)
+		   (unique
+		    (cond ((start-symbolp item)
+			   (cons end-token (follow-set item
+						       non-terminals
+						       non-terminals
+						       )
+				 )
+			   )
+			  (t
+			   (follow-set item
+				       non-terminals
+				       non-terminals
+				       )
+			   )
+			  )
+		    )
+		   )
+		 (cons item follow-list)
+		 )
+		)
+	   )
+	  )
     )
   )
 
@@ -266,32 +312,32 @@
 	(ret)
 	(follows)
 	)
+;   (patom "firsts ") (print production firsts) (terpr)
     (while firsts
-      (if (null (car firsts)) then
-	(setq follows (follow non-terminal non-terminals))
-	(while follows
-	  (if (or (null (car follows)) (terminalp (car follows)))
-	      (setq ret (cons (make-entry (car follows)
-					  non-terminal
-					  production
-					  )
-			      ret
-			      )
-		    )
-	    )
-	  (setq follows (cdr follows))
-	  )
-     elseif (terminalp (car firsts))
-	(setq ret (cons (make-entry (car firsts)
-				    non-terminal
-				    production
-				    )
-			ret
-			)
-	      )
-	)
-      (setq firsts (cdr firsts))
-      )
+      	   (if (null (car firsts)) then
+	       (setq follows (follow non-terminal non-terminals))
+;	       (patom "follows ") (print non-terminal follows) (terpr)
+	       (while follows
+	       	      (setq ret (cons (make-entry (car follows)
+					   	  non-terminal
+					   	  production
+					   	  )
+			       	      ret
+			       	      )
+		     	    )
+	       	      (setq follows (cdr follows))
+	       	      )
+     	    elseif (terminalp (car firsts))
+	       (setq ret (cons (make-entry (car firsts)
+				    	   non-terminal
+				    	   production
+				    	   )
+			       ret
+			       )
+	      	     )
+	       )
+      	   (setq firsts (cdr firsts))
+      	   )
     ret
     )
   )
@@ -381,6 +427,21 @@
   (unique (extract-non-terminals-nonunique table))
   )
 
+(defun print-lists (lists)
+  (cond (lists
+	 (print (car lists))
+	 (terpr)
+	 (print-lists (cdr lists))
+	 )
+	)
+  )
+
+(defun print-table (table)
+  (patom "(\n")
+  (print-lists table)
+  (patom ")\n")
+  )
+
 (setq file-in stdin)
 
 (if argv
@@ -393,4 +454,4 @@
 (setq table (ll-file file-in))
 (print (extract-terminals table)) (terpr)
 (print (extract-non-terminals table)) (terpr)
-(print table) (terpr)
+(print-table table)
