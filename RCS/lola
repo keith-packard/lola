@@ -382,6 +382,10 @@
 	(ret)
 	(follows)
 	)
+;    (patom "first-set for production ") (print production)
+;    (patom ":\n\t")
+;    (print firsts)
+;    (terpr)
     (while firsts
 	   ;
 	   ; if the first set contains nil then the production
@@ -390,6 +394,11 @@
 	   ;
       	   (if (null (car firsts)) then
 	       (setq follows (follow non-terminal non-terminals))
+
+;	       (patom "follow-set for production ") (print production)
+;	       (patom ":\n\t")
+;	       (print follows)
+;	       (terpr)
 	       (while follows
 	       	      (setq ret (cons (make-entry (car follows)
 					   	  non-terminal
@@ -434,6 +443,7 @@
 ;
 (defun ll-non-terminals (non-terminal-list start-symbol)
   (if non-terminal-list
+;      (patom "non-terminal ") (print (car non-terminal-list)) (terpr)
       (conc (ll-one-non-terminal (car non-terminal-list)
 				 (eval (car non-terminal-list))
 				 )
@@ -461,12 +471,48 @@
   )
 
 ;
+; verify that a parse table has a unique (token state) -> (production)
+; for each (token state) pair
+;
+
+(defun verify-unique (parse-table)
+  (let ((entries (new-dictionary)))
+    (while parse-table
+	   (cond ((dictionary-lookup entries (caar parse-table))
+		  (fpatom stderr
+			  "lola: ambiguous grammar at "
+			  (sprint (caaar parse-table) (cadaar parse-table))
+			  "\n\t"
+			  (sprint (cadar parse-table))
+			  "\n\t"
+			  (sprint (cadr (dictionary-lookup entries
+			  				   (caar parse-table)
+							   )
+					)
+				  )
+			  "\n")
+		  )
+		 (t
+		  (dictionary-insert entries
+				     (caar parse-table)
+				     (car parse-table)
+				     )
+		  )
+		 )
+	   (setq parse-table (cdr parse-table))
+	   )
+    )
+  )
+
+;
 ; produce a parse table for the given grammar
 ;
 (defun ll (grammar start-symbol end-token)
-  (let ((non-terminals))
+  (let ((non-terminals) (parse-table))
     (setq non-terminals (to-non-terminal-list grammar))
-    (ll-non-terminals non-terminals start-symbol)
+    (setq parse-table (ll-non-terminals non-terminals start-symbol))
+    (verify-unique parse-table)
+    parse-table
     )
   )
 
