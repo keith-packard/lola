@@ -63,6 +63,11 @@
 ; a list of symbols
 ;
 
+;
+; generate the first set for a collection of productions
+;  this is used to generate the first set for a particular
+;  non-terminal usually
+;
 (defun first-set (productions)
   (if (null productions)
       nil
@@ -77,6 +82,20 @@
 
 (setq first-list nil)
 
+;
+; generate the first set for a single symbol
+;  This is easy for a terminal -- the result
+;  is the item itself.  For non-terminals,
+;  the first set ends up being union of the first
+;  sets of all the productions that derive the
+;  non-terminal
+;
+; Note that this also checks to see if the grammar
+; is left-recursive.  This will succeed because
+; a left recursive grammar will always re-reference
+; a particular non-terminal when trying to generate
+; a first set containing it.
+;
 (defun first-for-symbol (item)
   (if (member item first-list)
       (error (strcat "lola: left-recursive grammar for symbol " (sprint item)))
@@ -165,6 +184,9 @@
 ; this section generates the 'follow' set for a non-terminal
 ;
 
+;
+; remove the null entries in a list
+;
 (defun remove-nil (stuff)
   (cond (stuff
 	 (cond ((car stuff)
@@ -178,6 +200,17 @@
 	(t nil)
 	)
   )
+
+;
+; generate the follow set of a for an item in a particular
+; production which derives a particular non-terminal.
+; This is obviously nil if the production does
+; not contain the item.  Otherwise, it is the first set
+; for the portion of the production which follows the
+; item -- if that first set contains nil, then the
+; follow set also contains the follow set for the
+; non-terminal which is derived by the production
+;
 
 (defun follow-in-production (item non-terminal production non-terminals)
   (let ((rest) (firsts))
@@ -197,6 +230,13 @@
     )
   )
     
+;
+; loop through the productions of a non-terminal adding
+; the follow sets for each one.  Note that this will often
+; generate duplicate entries -- as possibly many of the
+; follow sets for productions will contain the entire follow
+; set for the non-terminal
+;
 (defun follow-in-non-terminal (item non-terminal productions non-terminals)
   (cond (productions
 	 (conc (follow-in-production item
@@ -214,7 +254,11 @@
 	)
   )
 
-
+;
+; compute the follow set for an item out of a list
+; of non-terminals -- this is the real routine which
+; follow calls with the extra argument:  non-terminal-list
+;
 (defun follow-set (item non-terminal-list non-terminals)
   (cond (non-terminal-list
 	 (cond ((= (car non-terminal-list) item)
@@ -243,6 +287,12 @@
 
 (setq follow-list nil)
 
+;
+; generate the follow set for a particular item in a list
+; of non-terminals.  The only special case is for the
+; start symbol who's follow set also contains the
+; end-token
+;
 (defun follow (item non-terminals)
   (let ((cache (symbol (list item non-terminals) follow-dictionary)))
     (cond ((boundp cache)
@@ -250,39 +300,51 @@
 	   )
 	  (t
 	   (cond ((member item follow-list)
-		  (error (strcat "lola: recursive follow set for symbol "
-				 (sprint item)
-				 )
-			 )
+		  ;
+		  ; I don't know if this is a fatal grammar
+		  ; error -- Aho, Ullman and Seti do not
+		  ; give a very explicit algorithm for
+		  ; generating a follow set.
+		  ;
+		  (fpatom stderr
+			  "lola: recursive follow set for symbol "
+			  (sprint item)
+			  )
+	   	  nil
+		  )
+		 (t
+	   	  (set cache
+		       ((lambda (follow-list)
+		   	  (unique
+		    	   (cond ((start-symbolp item)
+			   	  (cons end-token (follow-set item
+						       	      non-terminals
+						       	      non-terminals
+						       	      )
+				 	)
+			   	  )
+			  	 (t
+			   	  (follow-set item
+				       	      non-terminals
+				       	      non-terminals
+				       	      )
+			   	  )
+			  	 )
+		    	   )
+		   	  )
+		 	(cons item follow-list)
+		 	)
+		       )
 		  )
 		 )
-	   (set cache
-		((lambda (follow-list)
-		   (unique
-		    (cond ((start-symbolp item)
-			   (cons end-token (follow-set item
-						       non-terminals
-						       non-terminals
-						       )
-				 )
-			   )
-			  (t
-			   (follow-set item
-				       non-terminals
-				       non-terminals
-				       )
-			   )
-			  )
-		    )
-		   )
-		 (cons item follow-list)
-		 )
-		)
 	   )
 	  )
     )
   )
 
+;
+; strip out duplicates from a list
+;
 (defun unique (stuff)
   (if stuff
       (let ((rest (unique (cdr stuff))))
@@ -307,16 +369,26 @@
     )
   )
 
+;
+; generate the table entries for a particular production
+; this is taken directly from Aho, Ullman and Seti
+;
+; Note: this function uses dynamic scoping -- both non-terminal
+; and non-terminals are expected to have been set by the caller
+;
 (defun ll-one-production (production)
   (let ((firsts (first production))
 	(ret)
 	(follows)
 	)
-;   (patom "firsts ") (print production firsts) (terpr)
     (while firsts
+	   ;
+	   ; if the first set contains nil then the production
+	   ; can derive epsilon -- in this case, the entire
+	   ; follow set will drive an epsilon production
+	   ;
       	   (if (null (car firsts)) then
 	       (setq follows (follow non-terminal non-terminals))
-;	       (patom "follows ") (print non-terminal follows) (terpr)
 	       (while follows
 	       	      (setq ret (cons (make-entry (car follows)
 					   	  non-terminal
@@ -342,6 +414,10 @@
     )
   )
 
+;
+; generate the table entries for all productions of
+; a particular non-terminal
+;
 (defun ll-one-non-terminal (non-terminal productions)
   (if productions
       (conc (ll-one-production (car productions))
@@ -352,6 +428,9 @@
       )
   )
 
+;
+; generate the table entries for all the non-terminals
+;
 (defun ll-non-terminals (non-terminal-list start-symbol)
   (if non-terminal-list
       (conc (ll-one-non-terminal (car non-terminal-list)
@@ -364,6 +443,11 @@
       )
   )
 
+;
+; convert a grammar in input/output form to
+; a list of non-terminals each bound to the associated
+; list of productions
+;
 (defun to-non-terminal-list (grammar)
   (if grammar
       (let ((name (caar grammar)))
@@ -375,6 +459,9 @@
       )
   )
 
+;
+; produce a parse table for the given grammar
+;
 (defun ll (grammar start-symbol end-token)
   (let ((non-terminals))
     (setq non-terminals (to-non-terminal-list grammar))
@@ -427,9 +514,23 @@
   (unique (extract-non-terminals-nonunique table))
   )
 
+(defun print-no-nils (l)
+  (cond ((listp l)
+	 (patom "(")
+	 (while l
+		(print-no-nils (car l))
+		(setq l (cdr l))
+		(cond (l (patom " ")))
+		)
+	 (patom ")")
+	 )
+	(t (print l))
+	)
+  )
+
 (defun print-lists (lists)
   (cond (lists
-	 (print (car lists))
+	 (print-no-nils (car lists))
 	 (terpr)
 	 (print-lists (cdr lists))
 	 )
