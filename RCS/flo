@@ -1,0 +1,173 @@
+#!/usr/local/klisp
+;
+; flo
+;
+; factor left common expressions out of a grammar
+;
+
+(defun clip-firsts (productions)
+  (cond (productions
+	 (cond ((car productions)
+	       	(cons (caar productions) (clip-firsts (cdr productions)))
+		)
+	       (t (clip-firsts (cdr productions)))
+	       )
+	 )
+	(t nil)
+	)
+  )
+
+(defun has-common (firsts)
+  (cond ((null firsts) nil)
+	((member (car firsts) (cdr firsts)) (car firsts))
+	(t (has-common (cdr firsts)))
+	)
+  )
+
+(defun with-first (productions first)
+  (cond ((null productions) nil)
+	((equal (caar productions) first)
+	 (cons (car productions) (with-first (cdr productions) first))
+	 )
+	(t (with-first (cdr productions) first))
+	)
+  )
+
+(defun without-first (productions first)
+  (cond ((null productions) nil)
+	((not (equal (caar productions) first))
+	 (cons (car productions) (without-first (cdr productions) first))
+	 )
+	(t (without-first (cdr productions) first))
+	)
+  )
+
+(defun remove-firsts (productions)
+  (cond ((null productions) nil)
+	(t (cons (cdar productions) (remove-firsts (cdr productions))))
+	)
+  )
+
+(defun eliminate-common (non-terminal dictionary)
+  (let ((productions (eval non-terminal))
+  	(firsts)
+	(common)
+	(removed)
+	(new)
+	(new-name)
+	)
+    (setq firsts (clip-firsts productions))
+    (setq common (has-common firsts))
+    (cond (common
+	   (setq removed (with-first productions common))
+	   (setq new t)
+	   (setq new-name (get-name non-terminal))
+	   (while new
+		  (setq new-name (strcat new-name "p"))
+		  (setq new (lookup new-name dictionary))
+		  )
+	   (setq new (symbol new-name dictionary))
+	   (set new (remove-firsts removed))
+	   (set non-terminal (cons (list common new)
+				    (without-first productions common))
+		 )
+	   (cons new (conc (eliminate-common new dictionary)
+	  		   (eliminate-common non-terminal dictionary)
+			   )	
+		 )
+	   )
+	  (t nil)
+	  )
+    )
+  )
+	   
+(defun factor-left (non-terminals)
+  (let ((l) (new))
+    (setq l non-terminals)
+    (while l
+	   (setq new (eliminate-common (car l) flo-dictionary))
+	   (cond (new
+	   	  (setq non-terminals (conc non-terminals new))
+		  )
+		 )
+	   (setq l (cdr l))
+	   )
+    non-terminals
+    )
+  )
+
+(defun to-non-terminal-list (grammar)
+  (if grammar
+      (let ((name (caar grammar)))
+	(set name (cdar grammar))
+	(cons name (to-non-terminal-list (cdr grammar)))
+	)
+   else
+      nil
+      )
+  )
+
+(defun from-non-terminal-list (non-terminals)
+  (cond (non-terminals
+	 (cons (cons (car non-terminals) (eval (car non-terminals)))
+	       (from-non-terminal-list (cdr non-terminals))
+	       )
+	 )
+	(nil)
+	)
+  )
+
+(defun print-productions (productions)
+  (cond (productions
+	 (patom "\t")
+	 (cond ((car productions)
+ 	 	(print (car productions))
+		)
+	       (t (patom "()"))
+	       )
+	 (terpr)
+	 (print-productions (cdr productions))
+	 )
+	)
+  )
+
+(defun print-one-set (set)
+  (patom " (")
+  (print (car set)) (terpr)
+  (print-productions (cdr set))
+  (patom "\t)\n")
+  )
+
+(defun print-grammars (grammar)
+  (cond (grammar
+	 (print-one-set (car grammar))
+	 (print-grammars (cdr grammar))
+	 )
+	)
+  )
+
+(defun print-grammar (grammar)
+  (patom "(\n")
+  (print-grammars grammar)
+  (patom " )\n")
+  )
+
+(defun flo-file (fd)
+  (setq flo-dictionary (new-dictionary))
+  (setq grammar (fread-dictionary fd flo-dictionary))
+  (setq non-terminals (to-non-terminal-list grammar))
+  (setq result (from-non-terminal-list (factor-left non-terminals)))
+  (print-grammar result)
+  )
+
+(setq file-in stdin)
+
+(if argv
+    (setq file-in (fopen (car argv) 'r))
+    (if (null file-in)
+	(error (strcat "flo: can't open " (sprint (car argv))))
+	)
+    )
+
+(flo-file file-in)
+

@@ -1,0 +1,396 @@
+#!/usr/local/klisp
+;
+; lola
+;
+; ll parser table generator
+;
+; the format of the grammar is:
+;
+; ((non-terminal (symbol symbol "action") (production) (production))
+;  (non-terminal (production) (production) (production))
+;  )
+;
+
+;
+; these two dictionaries cache results from (first) and (follow)
+; to speed the parser generator
+;
+
+(setq first-dictionary (new-dictionary))
+(setq follow-dictionary (new-dictionary))
+
+;
+; data abstraction
+;
+; a non terminal is a symbol bound to a list of lists
+; a terminal is a symbol not bound to a list
+; an action is a string
+;
+
+(defun non-terminalp (item)
+  (and (symbolp item) 
+       (boundp item)
+       (listp (eval item))
+       )
+  )
+
+(defun terminalp (item)
+  (or (null item)
+      (and (symbolp item)
+	   (not (non-terminalp item))
+	   )
+      )
+  )
+
+(defun actionp (item)
+  (stringp item)
+  )
+
+(defun null-production (p)
+  (if (null p)
+      t
+   elseif (stringp (car p))
+      (null-production (cdr p))
+   else
+      nil
+      )
+  )
+
+(defun start-symbolp (item) (equal item start-symbol))
+
+;
+; this next section generates the 'first' set for
+; a list of symbols
+;
+
+(defun first-set (productions)
+  (if (null productions)
+      nil
+   elseif (null-production (car productions)) then
+      (cons nil (first-set (cdr productions)))
+   else
+      (conc (first (car productions))
+	    (first-set (cdr productions))
+	    )
+      )
+  )
+
+(setq first-list nil)
+
+(defun first-for-symbol (item)
+  (if (member item first-list)
+      (error (strcat "lola: left-recursive grammar for symbol " (sprint item)))
+      )
+  ((lambda (first-list)
+     (if (terminalp item) then
+	 (list item)
+      elseif (non-terminalp item) then
+	 (unique (first-set (eval item)))
+	 )
+     )
+   (cons item first-list))
+  )
+
+;
+; generate the first list for a production.
+;
+; the first list is the set of symbols which are legal
+; as the first symbols in some possible expansion of the
+; production.  The cases are simple:
+;
+; if the (car production) is a terminal, then obviously
+; the only possible first symbol is that terminal
+;
+; Otherwise, generate the first lists for *all* expansions
+; of the non-terminal (car production).  If that list doesn't
+; contain an epsilon production 'nil, the we're done.  Otherwise,
+; this set must be added to the first set of (cdr production) because
+; some of the possible expansions of the production will not have any
+; terminals at all from (car production).
+;
+; Note the crufty use of dictionaries to save old expansion of first
+; sets.  This is because both ll and follow call first quite often,
+; frequently for the same production
+;
+
+(defun first (production)
+  (let ((cache (symbol production first-dictionary)) (ret))
+    (setq ret
+    (if (boundp cache)
+	(eval cache)
+     else
+	(set cache
+  	      (if production
+      		  (if (actionp (car production))
+	  	      (first (cdr production))
+       		   else
+      	  	      (let ((first-first))
+	    		(setq first-first (first-for-symbol (car production)))
+	    		(if (member nil first-first)
+	    		    (conc (delete 'nil first-first)
+				  (first (cdr production))
+				  )
+			 else
+			  first-first
+			  )
+	    		)
+	  	      )
+   	       else
+      		  '(nil)
+      		  )
+	      )
+	)
+    )
+    ret
+    )
+  )
+	
+;
+; extract the string elements from a list (top-level only)
+;
+
+(defun clip-out-string (l)
+  (if l
+      (if (stringp (car l))
+	  (clip-out-string (cdr l))
+       else
+	  (cons (car l) (clip-out-string (cdr l)))
+	  )
+   else
+      nil
+      )
+  )
+
+;
+; this section generates the 'follow' set for a non-terminal
+;
+
+(defun follow-set-for-production (item non-terminal production)
+  (let ((rest))
+    (setq rest (clip-out-string (member item production)))
+    (if rest
+	(conc (if (cdr rest)
+		  (delete nil (first (cdr rest)))
+		else
+		  nil
+		  )
+	      (if (or (not (cdr rest))
+		      (member nil (first (cdr rest)))
+		      )
+		  (follow non-terminal non-terminals)
+		else
+		  nil
+		  )
+	      )
+     else
+	nil
+	)
+    )
+  )
+    
+(defun follow-set-for-one (item non-terminal productions)
+  (if (= item non-terminal)
+      nil
+   elseif productions
+      (conc (follow-set-for-production item
+				       non-terminal
+				       (car productions)
+				       )
+	    (follow-set-for-one item
+				non-terminal
+				(cdr productions)
+				)
+	    )
+      else
+      nil
+      )
+  )
+
+(defun follow-set (item non-terminal-list)
+  (if non-terminal-list
+      (conc (follow-set-for-one item
+				(car non-terminal-list)
+				(eval (car non-terminal-list))
+				)
+	    (follow-set item (cdr non-terminal-list))
+	    )
+   else
+      nil
+      )
+  )
+       
+(defun follow (item non-terminals)
+  (let ((cache (symbol (list item non-terminals) follow-dictionary)))
+    (if (boundp cache)
+	(eval cache)
+     else
+	(set cache
+  	     (unique
+   	      (if (start-symbolp item)
+       		  (cons end-token (follow-set item non-terminals))
+       	       else
+       		  (follow-set item non-terminals)
+       		  )
+   	      )
+	     )
+	)
+    )
+  )
+
+(defun unique (stuff)
+  (if stuff
+      (let ((rest (unique (cdr stuff))))
+	(if (member (car stuff) rest)
+	    rest
+	 else
+	    (cons (car stuff) rest)
+	    )
+	)
+      )
+  )
+
+;
+; this makes an entry in the output list, this is just one
+; of many possible formats
+;
+
+(defun make-entry (terminal non-terminal production)
+  (let ((ret (list (list terminal non-terminal) production)))
+;    (patom "one entry is ") (print ret) (terpr) (fflush stdout)
+    ret
+    )
+  )
+
+(defun ll-one-production (production)
+  (let ((firsts (first production))
+	(ret)
+	(follows)
+	)
+    (while firsts
+      (if (null (car firsts)) then
+	(setq follows (follow non-terminal non-terminals))
+	(while follows
+	  (if (or (null (car follows)) (terminalp (car follows)))
+	      (setq ret (cons (make-entry (car follows)
+					  non-terminal
+					  production
+					  )
+			      ret
+			      )
+		    )
+	    )
+	  (setq follows (cdr follows))
+	  )
+     elseif (terminalp (car firsts))
+	(setq ret (cons (make-entry (car firsts)
+				    non-terminal
+				    production
+				    )
+			ret
+			)
+	      )
+	)
+      (setq firsts (cdr firsts))
+      )
+    ret
+    )
+  )
+
+(defun ll-one-non-terminal (non-terminal productions)
+  (if productions
+      (conc (ll-one-production (car productions))
+	    (ll-one-non-terminal non-terminal (cdr productions))
+	    )
+   else
+      nil
+      )
+  )
+
+(defun ll-non-terminals (non-terminal-list start-symbol)
+  (if non-terminal-list
+      (conc (ll-one-non-terminal (car non-terminal-list)
+				 (eval (car non-terminal-list))
+				 )
+	    (ll-non-terminals (cdr non-terminal-list) start-symbol)
+	    )
+   else
+      nil
+      )
+  )
+
+(defun to-non-terminal-list (grammar)
+  (if grammar
+      (let ((name (caar grammar)))
+	(set name (cdar grammar))
+	(cons name (to-non-terminal-list (cdr grammar)))
+	)
+   else
+      nil
+      )
+  )
+
+(defun ll (grammar start-symbol end-token)
+  (let ((non-terminals))
+    (setq non-terminals (to-non-terminal-list grammar))
+    (ll-non-terminals non-terminals start-symbol)
+    )
+  )
+
+;
+; user interface portion
+;
+
+;
+; store the input tokens in a different dictionary to
+; avoid collisions with previously bound names
+;
+
+(setq parse-dictionary (new-dictionary))
+
+(setq end-token (symbol "$" parse-dictionary))
+
+(defun ll-file (file-in)
+  (setq grammar (fread-dictionary file-in parse-dictionary))
+  (setq start-symbol (caar grammar))
+  (ll grammar (caar grammar) end-token)
+  )
+
+(defun extract-terminals-nonunique (table)
+  (if table
+      (cons (caaar table) (extract-terminals-nonunique (cdr table)))
+   else
+      nil
+      )
+  )
+
+(defun extract-terminals (table)
+  (unique (extract-terminals-nonunique table))
+  )
+	       
+(defun cadaar (l) (car (cdr (car (car l)))))
+
+(defun extract-non-terminals-nonunique (table)
+  (if table
+      (cons (cadaar table) (extract-non-terminals-nonunique (cdr table)))
+   else
+      nil
+      )
+  )
+
+(defun extract-non-terminals (table)
+  (unique (extract-non-terminals-nonunique table))
+  )
+
+(setq file-in stdin)
+
+(if argv
+    (setq file-in (fopen (car argv) 'r))
+    (if (null file-in)
+	(error (strcat "lola: can't open " (sprint (car argv))))
+	)
+    )
+
+(setq table (ll-file file-in))
+(print (extract-terminals table)) (terpr)
+(print (extract-non-terminals table)) (terpr)
+(print table) (terpr)
