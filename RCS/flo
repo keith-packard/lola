@@ -5,6 +5,11 @@
 ; factor left common expressions out of a grammar
 ;
 
+;
+; remove the first element from each of a list
+; of productions (unless the production is nil)
+;
+
 (defun clip-firsts (productions)
   (cond (productions
 	 (cond ((car productions)
@@ -17,6 +22,10 @@
 	)
   )
 
+;
+; return the first duplicated element from a list of elements
+;
+
 (defun has-common (firsts)
   (cond ((null firsts) nil)
 	((member (car firsts) (cdr firsts)) (car firsts))
@@ -24,6 +33,10 @@
 	)
   )
 
+;
+; return a list of productions which have the given
+; element as their first member
+;
 (defun with-first (productions first)
   (cond ((null productions) nil)
 	((equal (caar productions) first)
@@ -33,6 +46,10 @@
 	)
   )
 
+;
+; return a list of productions which *don't* have the given
+; element as their first member
+;
 (defun without-first (productions first)
   (cond ((null productions) nil)
 	((not (equal (caar productions) first))
@@ -42,6 +59,10 @@
 	)
   )
 
+
+;
+; strip the first 'count' elements off a list of productions
+;
 
 (defun remove-firsts (productions count)
   (cond ((null productions) nil)
@@ -54,6 +75,10 @@
 	)
   )
 
+;
+; return 't if each production in the list has the same first
+; element
+;
 (defun all-common-first (productions)
   (cond ((and productions (cdr productions))
 	 (cond ((or (and (null (car productions))
@@ -73,6 +98,10 @@
 	)
   )
 
+;
+; return the maximal list of common first sub-lists
+; from a set of productions
+;
 (defun max-common (productions)
   (cond ((all-common-first productions)
 	 (cons (caar productions)
@@ -84,6 +113,10 @@
 	)
   )
 
+;
+; factor out common left sub-lists from the list
+; of productions associated with a particular non-terminal
+;
 (defun eliminate-common (non-terminal dictionary)
   (let ((productions (eval non-terminal))
   	(firsts)
@@ -100,6 +133,10 @@
 	   (setq common-list (max-common removed))
 	   (setq new-name (get-name non-terminal))
 	   (setq new t)
+	   ;
+	   ; generate a name for the new non-terminal
+	   ;  keep appending "p" until it's new
+	   ;
 	   (while new
 		  (setq new-name (strcat new-name "p"))
 		  (setq new (lookup new-name dictionary))
@@ -119,6 +156,10 @@
     )
   )
 	   
+;
+; remove common left sub-expressions from each non-terminal
+; in the grammar
+;
 (defun factor-left (non-terminals)
   (let ((l) (new))
     (setq l non-terminals)
