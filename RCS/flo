@@ -139,7 +139,7 @@
 	   ;
 	   (while new
 		  (setq new-name (strcat new-name "p"))
-		  (setq new (lookup new-name dictionary))
+		  (setq new (dictionary-lookup dictionary new-name))
 		  )
 	   (setq new (symbol new-name dictionary))
 	   (set new (remove-firsts removed (length common-list)))
