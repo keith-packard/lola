@@ -309,6 +309,7 @@
 		  (fpatom stderr
 			  "lola: recursive follow set for symbol "
 			  (sprint item)
+			  "\n"
 			  )
 	   	  nil
 		  )
