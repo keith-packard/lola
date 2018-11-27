@@ -1,4 +1,4 @@
-#!/usr/local/calypso
+#!/local/bin/kalypso
 ;
 ; flo
 ;
@@ -27,8 +27,8 @@
 ;
 
 (defun has-common (firsts)
-  (cond ((null firsts) nil)
-	((member (car firsts) (cdr firsts)) (car firsts))
+  (cond ((nil? firsts) nil)
+	((member? (car firsts) (cdr firsts)) (car firsts))
 	(t (has-common (cdr firsts)))
 	)
   )
@@ -38,8 +38,8 @@
 ; element as their first member
 ;
 (defun with-first (productions first)
-  (cond ((null productions) nil)
-	((equal (caar productions) first)
+  (cond ((nil? productions) nil)
+	((= (caar productions) first)
 	 (cons (car productions) (with-first (cdr productions) first))
 	 )
 	(t (with-first (cdr productions) first))
@@ -51,8 +51,8 @@
 ; element as their first member
 ;
 (defun without-first (productions first)
-  (cond ((null productions) nil)
-	((not (equal (caar productions) first))
+  (cond ((nil? productions) nil)
+	((not (= (caar productions) first))
 	 (cons (car productions) (without-first (cdr productions) first))
 	 )
 	(t (without-first (cdr productions) first))
@@ -65,7 +65,7 @@
 ;
 
 (defun remove-firsts (productions count)
-  (cond ((null productions) nil)
+  (cond ((nil? productions) nil)
 	(t (cons (nthcdr count (car productions))
 		 (remove-firsts (cdr productions)
 				count
@@ -81,8 +81,8 @@
 ;
 (defun all-common-first (productions)
   (cond ((and productions (cdr productions))
-	 (cond ((or (and (null (car productions))
-			 (null (cadr productions))
+	 (cond ((or (and (nil? (car productions))
+			 (nil? (cadr productions))
 			 )
 		    (and (car productions)
 			 (cadr productions)
@@ -241,9 +241,11 @@
 
 (setq file-in stdin)
 
+(setq argv (cdr argv))
+
 (if argv
     (setq file-in (fopen (car argv) 'r))
-    (if (null file-in)
+    (if (nil? file-in)
 	(error (strcat "flo: can't open " (sprint (car argv))))
 	)
     )

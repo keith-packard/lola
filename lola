@@ -1,4 +1,4 @@
-#!/usr/local/calypso
+#!/local/bin/kalypso
 ;
 ; lola
 ;
@@ -27,36 +27,36 @@
 ; an action is a string
 ;
 
-(defun non-terminalp (item)
-  (and (symbolp item) 
-       (boundp item)
-       (listp (eval item))
+(defun non-terminal? (item)
+  (and (symbol? item) 
+       (bound? item)
+       (list? (eval item))
        )
   )
 
-(defun terminalp (item)
-  (or (null item)
-      (and (symbolp item)
-	   (not (non-terminalp item))
+(defun terminal? (item)
+  (or (nil? item)
+      (and (symbol? item)
+	   (not (non-terminal? item))
 	   )
       )
   )
 
-(defun actionp (item)
-  (stringp item)
+(defun action? (item)
+  (string? item)
   )
 
 (defun null-production (p)
-  (if (null p)
+  (if (nil? p)
       t
-   elseif (stringp (car p))
+   elseif (string? (car p))
       (null-production (cdr p))
    else
       nil
       )
   )
 
-(defun start-symbolp (item) (equal item start-symbol))
+(defun start-symbol? (item) (equal? item start-symbol))
 
 ;
 ; this next section generates the 'first' set for
@@ -69,7 +69,7 @@
 ;  non-terminal usually
 ;
 (defun first-set (productions)
-  (if (null productions)
+  (if (nil? productions)
       nil
    elseif (null-production (car productions)) then
       (cons nil (first-set (cdr productions)))
@@ -86,7 +86,7 @@
 ; generate the first set for a single symbol
 ;  This is easy for a terminal -- the result
 ;  is the item itself.  For non-terminals,
-;  the first set ends up being union of the first
+;  the first set ends u? being union of the first
 ;  sets of all the productions that derive the
 ;  non-terminal
 ;
@@ -97,13 +97,13 @@
 ; a first set containing it.
 ;
 (defun first-for-symbol (item)
-  (if (member item first-list)
+  (if (member? item first-list)
       (error (strcat "lola: left-recursive grammar for symbol " (sprint item)))
       )
   ((lambda (first-list)
-     (if (terminalp item) then
+     (if (terminal? item) then
 	 (list item)
-      elseif (non-terminalp item) then
+      elseif (non-terminal? item) then
 	 (unique (first-set (eval item)))
 	 )
      )
@@ -135,17 +135,17 @@
 (defun first (production)
   (let ((cache (symbol production first-dictionary)) (ret))
     (setq ret
-    (if (boundp cache)
+    (if (bound? cache)
 	(eval cache)
      else
 	(set cache
   	      (if production
-      		  (if (actionp (car production))
+      		  (if (action? (car production))
 	  	      (first (cdr production))
        		   else
       	  	      (let ((first-first))
 	    		(setq first-first (first-for-symbol (car production)))
-	    		(if (member nil first-first)
+	    		(if (member? nil first-first)
 	    		    (conc (delete 'nil first-first)
 				  (first (cdr production))
 				  )
@@ -165,15 +165,15 @@
   )
 	
 ;
-; extract the string elements from a list (top-level only)
+; extract the string elements from a list (to?-level only)
 ;
 
-(defun clip-out-string (l)
+(defun cli?-out-string (l)
   (if l
-      (if (stringp (car l))
-	  (clip-out-string (cdr l))
+      (if (string? (car l))
+	  (cli?-out-string (cdr l))
        else
-	  (cons (car l) (clip-out-string (cdr l)))
+	  (cons (car l) (cli?-out-string (cdr l)))
 	  )
    else
       nil
@@ -185,7 +185,7 @@
 ;
 
 ;
-; remove the null entries in a list
+; remove the nil? entries in a list
 ;
 (defun remove-nil (stuff)
   (cond (stuff
@@ -214,10 +214,10 @@
 
 (defun follow-in-production (item non-terminal production non-terminals)
   (let ((rest) (firsts))
-    (cond ((setq rest (member item production))
+    (cond ((setq rest (member? item production))
 	   (setq rest (cdr rest))
 	   (setq firsts (first rest))
-	   (cond ((member nil firsts)
+	   (cond ((member? nil firsts)
 		  (conc (remove-nil firsts)
  		  	(follow non-terminal non-terminals)
 			)
@@ -231,7 +231,7 @@
   )
     
 ;
-; loop through the productions of a non-terminal adding
+; loo? through the productions of a non-terminal adding
 ; the follow sets for each one.  Note that this will often
 ; generate duplicate entries -- as possibly many of the
 ; follow sets for productions will contain the entire follow
@@ -295,11 +295,11 @@
 ;
 (defun follow (item non-terminals)
   (let ((cache (symbol (list item non-terminals) follow-dictionary)))
-    (cond ((boundp cache)
+    (cond ((bound? cache)
 	   (eval cache)
 	   )
 	  (t
-	   (cond ((member item follow-list)
+	   (cond ((member? item follow-list)
 		  ;
 		  ; I don't know if this is a fatal grammar
 		  ; error -- Aho, Ullman and Seti do not
@@ -317,7 +317,7 @@
 	   	  (set cache
 		       ((lambda (follow-list)
 		   	  (unique
-		    	   (cond ((start-symbolp item)
+		    	   (cond ((start-symbol? item)
 			   	  (cons end-token (follow-set item
 						       	      non-terminals
 						       	      non-terminals
@@ -344,12 +344,12 @@
   )
 
 ;
-; strip out duplicates from a list
+; stri? out duplicates from a list
 ;
 (defun unique (stuff)
   (if stuff
       (let ((rest (unique (cdr stuff))))
-	(if (member (car stuff) rest)
+	(if (member? (car stuff) rest)
 	    rest
 	 else
 	    (cons (car stuff) rest)
@@ -392,7 +392,7 @@
 	   ; can derive epsilon -- in this case, the entire
 	   ; follow set will drive an epsilon production
 	   ;
-      	   (if (null (car firsts)) then
+      	   (if (nil? (car firsts)) then
 	       (setq follows (follow non-terminal non-terminals))
 
 ;	       (patom "follow-set for production ") (print production)
@@ -409,7 +409,7 @@
 		     	    )
 	       	      (setq follows (cdr follows))
 	       	      )
-     	    elseif (terminalp (car firsts))
+     	    elseif (terminal? (car firsts))
 	       (setq ret (cons (make-entry (car firsts)
 				    	   non-terminal
 				    	   production
@@ -562,7 +562,7 @@
   )
 
 (defun print-no-nils (l)
-  (cond ((listp l)
+  (cond ((list? l)
 	 (patom "(")
 	 (while l
 		(print-no-nils (car l))
@@ -592,9 +592,11 @@
 
 (setq file-in stdin)
 
+(setq argv (cdr argv))
+
 (if argv
     (setq file-in (fopen (car argv) 'r))
-    (if (null file-in)
+    (if (nil? file-in)
 	(error (strcat "lola: can't open " (sprint (car argv))))
 	)
     )
@@ -603,3 +605,4 @@
 (print (extract-terminals table)) (terpr)
 (print (extract-non-terminals table)) (terpr)
 (print-table table)
+
