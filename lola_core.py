@@ -1,7 +1,5 @@
 #!/usr/bin/python3
 
-import sys
-
 # ll parser table generator
 #
 # the format of the grammar is:
@@ -13,16 +11,18 @@ import sys
 # The start symbol must be named "start"
 #
 
-end_token="END$"
+end_token="END"
 
 def productions(grammar, non_terminal):
+    if non_terminal not in grammar:
+        error("Undefined non-terminal %s" % non_terminal)
     return grammar[non_terminal]
 
 # data abstraction
 #
 # a non terminal is a string starting with lower case
 # a terminal is a string starting with upper case
-# an action is a string starting with '#'
+# an action is a string starting with '@'
 #
 
 def is_non_terminal(item):
@@ -32,7 +32,7 @@ def is_terminal(item):
     return item[0].isupper()
 
 def is_action(item):
-    return item[0] == '#'
+    return item[0] == '@'
 
 def is_null_production(p):
     if len(p) == 0:
@@ -141,7 +141,9 @@ first_dictionary = {}
 
 def reset_first():
     global first_dictionary
+    global first_list
     first_dictionary = {}
+    first_list = ()
 
 def first(grammar, production):
     global first_dictionary
@@ -286,9 +288,27 @@ def ll_non_terminals(grammar, non_terminals):
 
 def get_non_terminals(grammar):
     non_terminals = ()
-    for e in grammar:
-        non_terminals += (e,)
+    for non_terminal in grammar:
+        non_terminals += (non_terminal,)
     return non_terminals
+
+def get_terminals(grammar):
+    terminals = ("END",)
+    for non_terminal, prods in grammar.items():
+        for prod in prods:
+            for token in prod:
+                if is_terminal(token) and not token in terminals:
+                    terminals += (token,)
+    return terminals
+
+def get_actions(grammar):
+    actions = ()
+    for non_terminal, prods in grammar.items():
+        for prod in prods:
+            for token in prod:
+                if is_action(token) and not token in actions:
+                    actions += (token,)
+    return actions
 
 #
 # produce a parse table for the given grammar
@@ -306,164 +326,17 @@ def dump_table(table):
     for key,value in table.items():
         print("\t%r -> %r" % (key, value))
 
-lex_c = False
-
-def getc():
-    global lex_c
-    if lex_c:
-        c = lex_c
-        lex_c = False
-    else:
-        c = sys.stdin.read(1)
-    return c
-
-def ungetc(c):
-    global lex_c
-    lex_c = c
-
-lex_value = False
-
-def lex():
-    global lex_value
-    while True:
-        c = getc()
-        if c == '':
-            return 'END$'
-        if c == '+':
-            return "PLUS"
-        if c == '-':
-            return "MINUS"
-        if c == '*':
-            return "TIMES"
-        if c == '/':
-            return "DIVIDE"
-        if c == '(':
-            return "OP"
-        if c == ')':
-            return "CP"
-        if c == '\n':
-            return "NL"
-        if '0' <= c and c <= '9':
-            v = ord(c) - ord('0')
-            while True:
-                c = getc()
-                if '0' <= c and c <= '9':
-                    v = v * 10 + ord(c) - ord('0')
-                else:
-                    ungetc(c)
-                    break;
-            lex_value = v
-            return "NUMBER"
-
-input = ("NUMBER", "PLUS", "NUMBER", "TIMES", "NUMBER", "END$")
-
-value_stack = ()
-
-def push(v):
-    global value_stack
-    print("\tpush %r" % v)
-    value_stack = (v,) + value_stack
-
-def pop():
-    global value_stack
-    v = head(value_stack)
-    value_stack = rest(value_stack)
-    print("\tpop %r" % v)
-    return v
-
-#
-# lines : line lines
-#       |
-#
-# expr  : term PLUS expr
-#       | term MINUS expr
-#       | term
-#
-# expr  : term expr-p
-# expr-p: PLUS expr
-#       | MINUS expr
-#       |
-
-grammar = {
-    "start"     : (("line", "start"),
-                   ()
-                   ),
-    "line"      : (("expr", "#PRINT", "NL"),
-                   ("NL",),
-                   ),
-    "expr"	: (("term", "expr-p"),
-    ),
-    "expr-p"	: (("PLUS", "term", "#ADD", "expr-p"),
-                   ("MINUS", "term", "#SUBTRACT", "expr-p"),
-                   (),
-    ),
-    "term"	: (("fact", "term-p"),
-                   ),
-    "term-p"	: (("TIMES", "fact", "#TIMES", "term-p"),
-                   ("DIVIDE", "fact", "#DIVIDE", "term-p"),
-                   (),
-                   ),
-    "fact"	: (("OP", "expr", "CP"),
-                   ("MINUS", "fact", "#NEGATE"),
-                   ("#PUSH", "NUMBER"),
-                   )
-    }
-
-def test():
-    global lex_value
-    global value_stack
-    table = ll(grammar)
-    dump_table(table)
-    stack = (start_symbol,)
-    token = False
-    while True:
-        if not token:
-            token = lex()
-            print("read %r" % token)
-
-        print("\ttoken %r stack %r" % (token, stack))
-
-        if not stack:
-            if token == end_token:
-                print("parse complete")
-                return
-            error("parse stack empty at %r" % token)
-
-        top = head(stack)
-
-        if is_action(top):
-            print("action %r" % top)
-            if top == "#PUSH":
-                push(lex_value)
-            elif top == "#ADD":
-                push(pop() + pop())
-            elif top == "#SUBTRACT":
-                a = pop()
-                b = pop()
-                push(b - a)
-            elif top == "#TIMES":
-                push(pop() * pop())
-            elif top == "#DIVIDE":
-                a = pop()
-                b = pop()
-                push(b / a)
-            elif top == '#NEGATE':
-                a = pop()
-                push(-a)
-            elif top == "#PRINT":
-                print("= %r" % pop())
-            stack = rest(stack)
-        elif is_terminal(top):
-            if top == token:
-                print("\tmatch %r" % token)
-                stack = rest(stack)
-                token = False
+def dump_grammar(grammar):
+    for non_term, prods in grammar.items():
+        print("%-20.20s" % non_term, end='')
+        first=True
+        for prod in prods:
+            if first:
+                print(":", end='')
+                first = False
             else:
-                error("parse error. got %r expected %r" % (token, top))
-        else:
-            key = (token, head(stack))
-            if key not in table:
-                error("parse error at %r %r" % (token, head(stack)))
-            stack = table[key] + rest(stack)
-        
-test()
+                print("                    |", end='')
+            for token in prod:
+                print(" %s" % token, end='')
+            print("")
+        print("                    ;")
