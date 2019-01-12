@@ -16,26 +16,25 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 
-CFLAGS=-g -O2 -I. -Wall -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wnested-externs
-
-all: lola calc pycalc
-
-lola: lola.py
-	cp lola.py lola
-	chmod +x lola
-
-calc: calc.c calc-gram.h
-	cc $(CFLAGS) -o $@ calc.c
-
-calc-gram.h: calc-gram.ll lola
-	./lola -o $@ calc-gram.ll
-
-pycalc: pycalc.py pycalc_gram.py
-	cp pycalc.py $@
-	chmod +x pycalc
-
-pycalc_gram.py: pycalc_gram.ll lola.py
-	python3 lola.py -o $@ --format=python pycalc_gram.ll
-
-clean:
-	rm -f lola calc pycalc calc-gram.h pycalc_gram.py
+start	: line start
+	|
+	;
+line	: expr @PRINT@ NL
+	| NL
+	;
+expr	: term expr-p
+	;
+expr-p	: PLUS term @ADD@ expr-p
+	| MINUS term @SUBTRACT@ expr-p
+	|
+	;
+term	: fact term-p
+	;
+term-p	: TIMES fact @TIMES@ term-p
+	| DIVIDE fact @DIVIDE@ term-p
+	|
+	;
+fact	: OP expr CP
+	| MINUS fact @NEGATE@
+	| @PUSH@ NUMBER
+	;

@@ -17,7 +17,7 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 
-from lola_core import *
+import sys
 
 lex_c = False
 
@@ -70,16 +70,20 @@ def lex():
 
 value_stack = ()
 
+def head(s):
+    return s[0]
+
+def rest(s):
+    return s[1:]
+
 def push(v):
     global value_stack
-    print("\tpush %r" % v)
     value_stack = (v,) + value_stack
 
 def pop():
     global value_stack
     v = head(value_stack)
     value_stack = rest(value_stack)
-    print("\tpop %r" % v)
     return v
 
 #
@@ -95,55 +99,36 @@ def pop():
 #       | MINUS expr
 #       |
 
-grammar = {
-    "start"     : (("line", "start"),
-                   ()
-                   ),
-    "line"      : (("expr", "@PRINT", "NL"),
-                   ("NL",),
-                   ),
-    "expr"	: (("term", "expr-p"),
-    ),
-    "expr-p"	: (("PLUS", "term", "@ADD", "expr-p"),
-                   ("MINUS", "term", "@SUBTRACT", "expr-p"),
-                   (),
-    ),
-    "term"	: (("fact", "term-p"),
-                   ),
-    "term-p"	: (("TIMES", "fact", "@TIMES", "term-p"),
-                   ("DIVIDE", "fact", "@DIVIDE", "term-p"),
-                   (),
-                   ),
-    "fact"	: (("OP", "expr", "CP"),
-                   ("MINUS", "fact", "@NEGATE"),
-                   ("@PUSH", "NUMBER"),
-                   )
-    }
+from lola_test_gram import *
+
+def is_non_terminal(item):
+    return item[0].islower()
+
+def is_terminal(item):
+    return item[0].isupper()
+
+def is_action(item):
+    return item[0] == '@'
 
 def test():
     global lex_value
     global value_stack
-    table = ll(grammar)
-    dump_table(table)
-    stack = (start_symbol,)
+    global parse_table
+    table = parse_table
+    stack = ('start',)
     token = False
     while True:
         if not token:
             token = lex()
-            print("read %r" % token)
-
-        print("\ttoken %r stack %r" % (token, stack))
 
         if not stack:
-            if token == end_token:
-                print("parse complete")
+            if token == 'END':
                 return
             error("parse stack empty at %r" % token)
 
         top = head(stack)
 
         if is_action(top):
-            print("action %r" % top)
             if top == "@PUSH":
                 push(lex_value)
             elif top == "@ADD":
@@ -166,7 +151,6 @@ def test():
             stack = rest(stack)
         elif is_terminal(top):
             if top == token:
-                print("\tmatch %r" % token)
                 stack = rest(stack)
                 token = False
             else:
