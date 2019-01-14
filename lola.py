@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+# coding: utf-8
 #
 # Copyright © 2019 Keith Packard <keithp@keithp.com>
 #
@@ -79,17 +80,17 @@ def error(msg):
     exit(1)
 
 #
-# generate the first set for a collection of productions
-#  this is used to generate the first set for a particular
-#  non-terminal usually
+# generate the first set for the productions
+#  of a non-terminal
 #
-def first_set(grammar, prods):
-    if len(prods) == 0:
-        return ()
-    elif is_null_production(head(prods)):
-        return ((),) + first_set(grammar, rest(prods))
-    else:
-        return first(grammar, head(prods)) + first_set(grammar, rest(prods))
+def first_set(grammar, non_terminal):
+    ret=()
+    for prod in productions(grammar, non_terminal):
+        if is_null_production(prod):
+            ret += ((),)
+        else:
+            ret += first(grammar, prod)
+    return ret
 
 first_list = ()
 
@@ -131,7 +132,8 @@ def first_for_symbol(grammar, item):
     if is_terminal(item):
         ret = (item,)
     elif is_non_terminal(item):
-        ret = unique(first_set(grammar, productions(grammar, item)))
+        set = first_set(grammar, item)
+        ret = unique(set)
     first_list = rest(first_list)
     return ret
 
@@ -264,6 +266,9 @@ def make_entry(terminal, non_terminal, production):
 
 def add_dict(a,b):
     for key,value in b.items():
+        if key in a:
+            if len(value) < len(a[key]):
+                continue
         a[key] = value
 
 #
@@ -290,10 +295,12 @@ def ll_one_production(grammar, production, non_terminal, non_terminals):
 # generate the table entries for all productions of
 # a particular non-terminal
 #
-def ll_one_non_terminal(grammar, non_terminal, prods, non_terminals):
+def ll_one_non_terminal(grammar, non_terminal, non_terminals):
     ret = {}
-    for p in prods:
+#    print("ll_one_non_terminal %r" % non_terminal)
+    for p in productions(grammar, non_terminal):
         add_dict(ret, ll_one_production(grammar, p, non_terminal, non_terminals))
+#    print("ll for %r is %r" % (non_terminal, ret))
     return ret
 
 #
@@ -303,7 +310,7 @@ def ll_one_non_terminal(grammar, non_terminal, prods, non_terminals):
 def ll_non_terminals(grammar, non_terminals):
     ret = {}
     for non_terminal in non_terminals:
-        add_dict(ret, ll_one_non_terminal(grammar, non_terminal, productions(grammar, non_terminal), non_terminals))
+        add_dict(ret, ll_one_non_terminal(grammar, non_terminal, non_terminals))
     return ret
 
 def get_non_terminals(grammar):
@@ -382,6 +389,7 @@ grammar = {
 lex_c = False
 
 lex_file = sys.stdin
+lex_file_name = "<stdin>"
 
 lex_line = 1
 
@@ -417,6 +425,16 @@ def is_symbol_start(c):
 def is_symbol_cont(c):
     return is_symbol_start(c) or c.isdigit()
 
+action_lines = {}
+
+def action_line(action):
+    global action_lines
+    return action_lines[action]
+
+def mark_action_line(action, line):
+    global action_lines
+    action_lines[action] = line
+
 def lex():
     global lex_value
     lex_value = False
@@ -444,6 +462,7 @@ def lex():
                         break
                 v += c
             lex_value = v
+            mark_action_line(v, at_line)
             return "SYMBOL"
         if is_symbol_start(c):
             v = c
@@ -501,11 +520,11 @@ def lola():
                 stack = rest(stack)
                 token = False
             else:
-                error("%d: parse error. got %r expected %r" % (lex_line, token, top))
+                error("%s:%d: parse error. got %r expected %r" % (lex_file_name, lex_line, token, top))
         else:
             key = (token, head(stack))
             if key not in table:
-                error("%d: parse error at %r %r" % (lex_line, token, head(stack)))
+                error("%s:%d: parse error at %r %r" % (lex_file_name, lex_line, token, head(stack)))
             stack = table[key] + rest(stack)
         
 def to_c(string):
@@ -558,6 +577,9 @@ def dump_c(grammar, parse_table, file=sys.stdout):
     num_non_terminals = len(non_terminals)
     actions = get_actions(grammar)
     num_actions = len(actions)
+    print("#ifdef COMMENT", file=output)
+    dump_grammar(grammar, file=output)
+    print("#endif /* COMMENT */", file=output)
     print("/* %d terminals %d non_terminals %d actions %d parse table entries */" % (num_terminals, num_non_terminals, num_actions, len(parse_table)), file=output)
     print("", file=output)
     print("#if !defined(GRAMMAR_TABLE) && !defined(ACTIONS_SWITCH) && !defined(TOKEN_NAMES)", file=output)
@@ -601,6 +623,7 @@ def dump_c(grammar, parse_table, file=sys.stdout):
     print("#undef ACTIONS_SWITCH", file=output)
     for action in actions:
         print("    case %s:" % action_name(token_value, action), file=output)
+        print('#line %d "%s"' % (action_line(action), lex_file_name), file=output)
         print("        %s; break;" % action_value(action), file=output)
     print("#endif /* ACTIONS_SWITCH */", file=output)
     print("#ifdef TOKEN_NAMES", file=output)
@@ -616,6 +639,7 @@ def dump_c(grammar, parse_table, file=sys.stdout):
 
 def main():
     global lex_file
+    global lex_file_name
 
     parser = argparse.ArgumentParser()
     parser.add_argument("input", help="Grammar input file")
@@ -623,6 +647,7 @@ def main():
     parser.add_argument("-f", "--format", help="Parser output format (c, python)")
     args = parser.parse_args()
     lex_file = open(args.input, 'r')
+    lex_file_name = args.input
     output = sys.stdout
     if args.output:
         output = open(args.output, 'w')
