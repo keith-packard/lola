@@ -81,7 +81,10 @@ start	: line start
 # the stack could be re-initialized when the parser is restarted.
 #
 
-line	: expr @{ printf("%g\n", pop()); }@ NL
+line	: expr NL
+		@{
+			printf("%g\n", pop());
+		}@ 
 	| NL
 	;
 
@@ -130,11 +133,8 @@ fact	: OP expr CP
 			double a = pop();
 			push(-a);
 		}@
-	|
+	| NUMBER
 		@{
 			push(lex_value);
 		}@
-	  NUMBER
 	;
-
-	

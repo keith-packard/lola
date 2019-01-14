@@ -21,6 +21,138 @@
 import sys
 import argparse
 
+actions_marker = "@@ACTIONS@@"
+
+parse_code = """
+
+static token_t parse_stack[PARSE_STACK_SIZE];
+
+static const token_t *
+match_state(token_t terminal, token_t non_terminal)
+{
+	parse_key_t	key = parse_key(terminal, non_terminal);
+	int		l = 0, h = (int) (sizeof(parse_table) / sizeof(parse_table[0])) - 1;
+
+	while (l <= h) {
+	    int m = (l + h) >> 1;
+	    if (parse_table[m].key < key)
+		l = m + 1;
+	    else
+		h = m - 1;
+	}
+	if (parse_table[l].key == key)
+	    return &production_table[production_index(parse_table[l].production)];
+	return NULL;
+}
+
+static inline token_t
+parse_pop(int *parse_stack_p)
+{
+    if ((*parse_stack_p) == 0)
+	return TOKEN_NONE;
+    return parse_stack[--(*parse_stack_p)];
+}
+
+static inline bool
+parse_push(const token_t *tokens, int *parse_stack_p)
+{
+    const token_t *t = tokens;
+    while (*t != TOKEN_NONE)
+	t++;
+    while (t != tokens) {
+        if ((*parse_stack_p) >= PARSE_STACK_SIZE)
+            return false;
+	parse_stack[(*parse_stack_p)++] = *--t;
+    }
+    return true;
+}
+
+static inline bool
+is_terminal(token_t token)
+{
+    return token < FIRST_NON_TERMINAL;
+}
+
+static inline bool
+is_action(token_t token)
+{
+    return token >= FIRST_ACTION;
+}
+
+static inline bool
+is_non_terminal(token_t token)
+{
+    return !is_terminal(token) && !is_action(token);
+}
+
+typedef enum {
+    parse_return_success,
+    parse_return_syntax,
+    parse_return_oom,
+} parse_return_t;
+
+static parse_return_t
+parse(void *lex_context)
+{
+    token_t token = TOKEN_NONE;
+    int parse_stack_p = 0;
+
+    parse_stack[parse_stack_p++] = NON_TERMINAL_start;
+
+    for (;;) {
+	token_t top = parse_pop(&parse_stack_p);
+
+	if (is_action(top)) {
+	    switch(top) {
+@@ACTIONS@@
+	    default:
+		break;
+	    }
+	    continue;
+	}
+
+	if (token == TOKEN_NONE)
+	    token = lex(lex_context);
+
+	if (top == TOKEN_NONE) {
+	    if (token != END)
+	        return parse_return_syntax;
+	    return parse_return_success;
+	}
+
+#if PARSE_DEBUG
+	{
+	    int i;
+	    printf("token %s stack %s", token_names[token], token_names[top]);
+	    for (i = parse_stack_p-1; i >= 0; i--) {
+		if (!is_action(parse_stack[i]))
+		    printf(" %s", token_names[parse_stack[i]]);
+		else
+		    printf(" action %d", parse_stack[i]);
+	    }
+	    printf("\\n");
+	}
+#endif
+
+	if (is_terminal(top)) {
+	    if (top != token)
+		return parse_return_syntax;
+	    token = TOKEN_NONE;
+	} else {
+	    const token_t *tokens = match_state(token, top);
+
+	    if (!tokens)
+		return parse_return_syntax;
+
+	    if (!parse_push(tokens, &parse_stack_p))
+                return parse_return_oom;
+	}
+    }
+}
+
+"""
+
+
 # ll parser table generator
 #
 # the format of the grammar is:
@@ -569,6 +701,12 @@ def token_name(token_values, token):
 def dump_python(grammar, parse_table, file=sys.stdout):
     print("parse_table = %r" % parse_table, file=file)
 
+def pad(value, round):
+    p = value % round
+    if p != 0:
+        return round - p
+    return 0
+
 def dump_c(grammar, parse_table, file=sys.stdout):
     output=file
     terminals = get_terminals(grammar)
@@ -577,21 +715,20 @@ def dump_c(grammar, parse_table, file=sys.stdout):
     num_non_terminals = len(non_terminals)
     actions = get_actions(grammar)
     num_actions = len(actions)
-    print("#ifdef COMMENT", file=output)
-    dump_grammar(grammar, file=output)
-    print("#endif /* COMMENT */", file=output)
     print("/* %d terminals %d non_terminals %d actions %d parse table entries */" % (num_terminals, num_non_terminals, num_actions, len(parse_table)), file=output)
     print("", file=output)
-    print("#if !defined(GRAMMAR_TABLE) && !defined(ACTIONS_SWITCH) && !defined(TOKEN_NAMES)", file=output)
+    print("#if !defined(GRAMMAR_TABLE) && !defined(TOKEN_NAMES) && !defined(PARSE_CODE)", file=output)
     print("typedef enum {", file=output)
     print("    TOKEN_NONE = 0,", file=output)
     token_value = {}
     value = 1
+    first_terminal = value
     for terminal in terminals:
         token_value[terminal] = value
         print("    %s = %d," % (terminal_name(terminal), value), file=output)
         value += 1
-    print("    FIRST_NON_TERMINAL = %d," % value, file=output)
+    first_non_terminal = value
+    print("    FIRST_NON_TERMINAL = %d," % first_non_terminal, file=output)
     for non_terminal in non_terminals:
         token_value[non_terminal] = value
         print("    %s = %d," % (non_terminal_name(non_terminal), value), file=output)
@@ -602,30 +739,88 @@ def dump_c(grammar, parse_table, file=sys.stdout):
         print("    %s = %d," % (action_name(token_value, action), value), file=output)
         value += 1
     print("} __attribute__((packed)) token_t;", file=output)
-    print("#endif /* !GRAMMAR_TABLE && !ACTIONS_SWITCH */", file=output)
+    print("#endif", file=output)
     print("", file=output)
     print("#ifdef GRAMMAR_TABLE", file=output)
     print("#undef GRAMMAR_TABLE", file=output)
-    print("static const token_t parse_table[] = {", file=output)
+
+    prod_map = {};
+    
+    # Compute total size of production table to know what padding we'll need
+
+    prod_handled = {}
+
+    total_tokens = 0;
+    for key in parse_table:
+        prod = parse_table[key]
+        if prod not in prod_handled:
+            total_tokens += 1 + len(prod)
+            prod_handled[prod] = True
+
+    prod_shift = 0
+    while 1 << (8 + prod_shift) < total_tokens:
+        prod_shift += 1
+
+    prod_round = 1 << prod_shift
+
+    print("static const token_t production_table[] = {", file=output);
+
+    prod_index = 0
+    for key in parse_table:
+        prod = parse_table[key]
+        if prod not in prod_map:
+            prod_map[prod] = prod_index
+            print("    /* %4d */   " % prod_index, end='', file=output)
+            for token in prod:
+                print(" %s," % token_name(token_value, token), end='', file=output)
+                prod_index += 1
+            p = pad(prod_index + 1, prod_round)
+            for i in range(0,p):
+                print(" TOKEN_NONE,", end='', file=output)
+                prod_index += 1
+            print(" TOKEN_NONE,", file=output)
+            prod_index += 1
+    print("};", file=output)
+
+    key_type = "uint32_t"
+    key_shift = 16
+    if num_terminals < 256 and num_non_terminals < 256:
+        key_type = "uint16_t"
+        key_shift = 8
+
+    print("typedef %s parse_key_t;" % key_type, file=output)
+    print("#define parse_key(terminal, non_terminal) ((((terminal) - %d) << %d) | ((non_terminal) - %d))" %
+          (first_terminal, key_shift, first_non_terminal), file=output)
+    print("#define production_index(i) ((i) << %d)" % prod_shift, file=output)
+
+    print("typedef struct { parse_key_t key; uint8_t production; } __attribute__((packed)) parse_table_t;", file=output)
+    print("static const parse_table_t parse_table[] = {", file=output)
     for terminal in terminals:
         for non_terminal in non_terminals:
             key = (terminal, non_terminal)
             if key in parse_table:
                 prod = parse_table[key]
-                print("    %s, %s, " % (terminal_name(terminal), non_terminal_name(non_terminal)), end='', file=output)
-                for token in prod:
-                    print("%s, " % token_name(token_value, token), end='', file=output)
-                print("TOKEN_NONE,", file=output)
+                print("    { parse_key(%s, %s), %d }," % (terminal_name(terminal), non_terminal_name(non_terminal), prod_map[prod] >> prod_shift), file=output)
     print("};", file=output)
     print("#endif /* GRAMMAR_TABLE */", file=output)
     print("", file=output)
-    print("#ifdef ACTIONS_SWITCH", file=output)
-    print("#undef ACTIONS_SWITCH", file=output)
+    print("#ifdef PARSE_CODE", file=output)
+    print("#undef PARSE_CODE", file=output)
+
+    actions_loc = parse_code.find(actions_marker)
+
+    first_bit = parse_code[:actions_loc]
+    last_bit = parse_code[actions_loc + len(actions_marker):]
+
+    print("%s" % first_bit, end='', file=output)
     for action in actions:
         print("    case %s:" % action_name(token_value, action), file=output)
         print('#line %d "%s"' % (action_line(action), lex_file_name), file=output)
         print("        %s; break;" % action_value(action), file=output)
-    print("#endif /* ACTIONS_SWITCH */", file=output)
+
+    print("%s" % last_bit, end='', file=output)
+
+    print("#endif /* PARSE_CODE */", file=output)
     print("#ifdef TOKEN_NAMES", file=output)
     print("#undef TOKEN_NAMES", file=output)
     print("static const char *const token_names[] = {", file=output)
