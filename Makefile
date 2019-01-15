@@ -34,8 +34,8 @@ pycalc: pycalc.py pycalc_gram.py
 	cp pycalc.py $@
 	chmod +x pycalc
 
-pycalc_gram.py: pycalc_gram.ll lola.py
-	python3 lola.py -o $@ --format=python pycalc_gram.ll
+pycalc_gram.py: pycalc_gram.ll lola
+	./lola -o $@ --format=python pycalc_gram.ll
 
 clean:
 	rm -f lola calc pycalc calc-gram.h pycalc_gram.py
