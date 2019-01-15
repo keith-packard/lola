@@ -88,6 +88,7 @@ is_non_terminal(token_t token)
 typedef enum {
     parse_return_success,
     parse_return_syntax,
+    parse_return_end,
     parse_return_oom,
 } parse_return_t;
 
@@ -120,7 +121,7 @@ parse(void *lex_context)
 	    return parse_return_success;
 	}
 
-#if PARSE_DEBUG
+#ifdef PARSE_DEBUG
 	{
 	    int i;
 	    printf("token %s stack %s", token_names[token], token_names[top]);
@@ -135,8 +136,11 @@ parse(void *lex_context)
 #endif
 
 	if (is_terminal(top)) {
-	    if (top != token)
+	    if (top != token) {
+                if (token == END)
+                    return parse_return_end;
 		return parse_return_syntax;
+            }
 	    token = TOKEN_NONE;
 	} else {
 	    const token_t *tokens = match_state(token, top);
@@ -399,6 +403,7 @@ def make_entry(terminal, non_terminal, production):
 def add_dict(a,b):
     for key,value in b.items():
         if key in a:
+            print("multiple productions match %r - %r and %r" % (key, value, a[key]), file=sys.error)
             if len(value) < len(a[key]):
                 continue
         a[key] = value
@@ -804,6 +809,17 @@ def dump_c(grammar, parse_table, file=sys.stdout):
     print("};", file=output)
     print("#endif /* GRAMMAR_TABLE */", file=output)
     print("", file=output)
+    print("#ifdef TOKEN_NAMES", file=output)
+    print("#undef TOKEN_NAMES", file=output)
+    print("static const char *const token_names[] = {", file=output)
+    print('0,', file=output);
+    for terminal in terminals:
+        print('"%s",' % (terminal), file=output)
+    for non_terminal in non_terminals:
+        print('"%s",' % (non_terminal), file=output)
+    print("};", file=output)
+    print("#endif /* TOKEN_NAMES */", file=output)
+    print("", file=output)
     print("#ifdef PARSE_CODE", file=output)
     print("#undef PARSE_CODE", file=output)
 
@@ -819,18 +835,7 @@ def dump_c(grammar, parse_table, file=sys.stdout):
         print("        %s; break;" % action_value(action), file=output)
 
     print("%s" % last_bit, end='', file=output)
-
     print("#endif /* PARSE_CODE */", file=output)
-    print("#ifdef TOKEN_NAMES", file=output)
-    print("#undef TOKEN_NAMES", file=output)
-    print("static const char *const token_names[] = {", file=output)
-    print('0,', file=output);
-    for terminal in terminals:
-        print('"%s",' % (terminal), file=output)
-    for non_terminal in non_terminals:
-        print('"%s",' % (non_terminal), file=output)
-    print("};", file=output)
-    print("#endif /* TOKEN_NAMES */", file=output)
 
 def main():
     global lex_file
