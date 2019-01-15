@@ -24,12 +24,6 @@
 
 #include "calc-gram.h"
 
-#define GRAMMAR_TABLE
-#include "calc-gram.h"
-
-#define TOKEN_NAMES
-#include "calc-gram.h"
-
 #define PARSE_STACK_SIZE	32
 
 static int lex_c = 0;
@@ -124,6 +118,8 @@ static double pop(void)
     return value_stack[--value_stack_p];
 }
 
+#define GRAMMAR_TABLE
+#define TOKEN_NAMES
 #define PARSE_CODE
 #include "calc-gram.h"
 
