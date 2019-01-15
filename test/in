@@ -1,0 +1,77 @@
+(
+ (expr
+	(term exprp)
+	)
+ (exprp
+	(+ term "ADD" exprp)
+	(- term "SUBTRACT" exprp)
+	()
+	)
+ (term
+	(fact termp)
+	)
+ (termp
+	(* fact "MULTIPLY" termp)
+	(/ fact "DIVIDE" termp)
+	()
+	)
+ (fact
+	(|(| expr |)|)
+	(float "PUSH")
+	(- fact "NEGATE")
+	)
+ (float
+	(opt-sign floatp)
+	)
+ (opt-sign
+	("POSITIVE" +)
+	("NEGATIVE" -)
+	()
+	)
+ (opt-digits
+	(digits)
+	()
+	)
+ (digits
+	("ADD-DIGIT" digit digitsp)
+	)
+ (more-digits
+	("ADD-DIGIT" digit more-digits)
+	()
+	)
+ (digit
+	(|0|)
+	(|1|)
+	(|2|)
+	(|3|)
+	(|4|)
+	(|5|)
+	(|6|)
+	(|7|)
+	(|8|)
+	(|9|)
+	)
+ (opt-exp
+	("EXP" exp)
+	()
+	)
+ (exp
+	(eE opt-sign "CLEAR" digits)
+	)
+ (eE
+	(e)
+	(E)
+	)
+ (opt-.
+	(. "POINT" opt-digits)
+	()
+	)
+ (floatp
+	(. "CLEAR" "POINT" digits opt-exp)
+	("CLEAR" digits opt-. opt-exp)
+	)
+ (digitsp
+	(more-digits)
+	()
+	)
+ )

@@ -1,0 +1,11 @@
+;
+; this is an ambiguous grammar and must
+; be run through flo before lola to factor
+; out the common left sub-expressions
+;
+((foo	(a b c)
+	(a b d)
+	(e f g)
+	(e f h i)
+	)
+ )

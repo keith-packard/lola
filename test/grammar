@@ -1,0 +1,6 @@
+((E        (T Ep)                      				)
+ (Ep       (+ T "ADD" Ep) (- T "SUBTRACT" Ep) ()		)
+ (T        (F Tp)                      				)
+ (Tp       (* F "TIMES" Tp) (/ F "DIVIDE" Tp) () 		)
+ (F        ( |(| E |)| ) (- F "NEGATE") ("PUSH" id)		)
+ )

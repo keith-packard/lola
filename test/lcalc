@@ -1,0 +1,3 @@
+#!/home/keithp/bin/kalypso
+(include 'calc.l)
+(calc)

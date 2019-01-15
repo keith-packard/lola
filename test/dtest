@@ -1,0 +1,15 @@
+;
+; this is the simplest case of a
+; grammar which elicits the recursive
+; follow-set warning.  This must be
+; run through flo before lola to
+; factor out the common left sub-
+; expression
+;
+(
+(digits	(digit digits)
+	(digit)
+	)
+(digit	(|0|)(|1|)(|2|)(|3|)(|4|)(|5|)(|6|)(|7|)(|8|)(|9|)
+	)
+)

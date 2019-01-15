@@ -1,0 +1,14 @@
+;
+; this grammar is left recursive through the null production
+; in bar -- it should elicit the error
+;
+; lola: left-recursive grammar for symbol foo
+;
+
+(
+ (foo		(bar foo)
+ 		)
+ (bar		(A B)
+ 		()
+		)
+)
