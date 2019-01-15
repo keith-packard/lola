@@ -1,0 +1,117 @@
+#!/usr/local/klisp
+;
+; resgram
+;
+; create a resource file from an ll parser table
+;
+
+(defun cadaar (l) (car (cdr (car (car l)))))
+
+(defun production-list (table)
+  (let ((rest))
+  (cond (table
+	 (setq rest (production-list (cdr table)))
+	 (cond ((member (cadar table) rest)
+		rest
+		)
+	       (t (cons (cadar table) rest)
+		  )
+	       )
+	 )
+	(t nil)
+	)
+    )
+  )
+
+(defun enter-symbol (table value index)
+  (set (symbol index table) value)
+  )
+
+(defun production-table (productions)
+  (let ((table (new-dictionary)) (map nil) (count 0) (p))
+    (while productions
+	   (setq p (car productions))
+	   (setq map (cons (list p count) map))
+	   (while p
+		  (enter-symbol table (car p) count)
+		  (++ count)
+		  (setq p (cdr p))
+		  )
+	   (enter-symbol table nil count)
+	   (++ count)
+	   (setq productions (cdr productions))
+	   )
+    (list table map)
+    )
+  )
+
+(defun dict-to-table (d count)
+  (let ((s))
+    (setq s (lookup count d))
+    (cond (s
+	   (cons (eval s) (dict-to-table d (+ count 1)))
+	   )
+	  (t nil)
+	  )
+    )
+  )
+
+(defun print-parse-table (prod-table map table terminals non-terminals)
+  (let ((term) (index) (table-ent))
+    (while non-terminals
+	   (setq term terminals)
+	   (while term
+		  (setq table-ent (assoc (list (car term) (car non-terminals))
+					 table
+					 )
+			)
+		  (patom "/* ")
+		  (print (car term))
+		  (patom ", ")
+		  (print (car non-terminals))
+		  (patom " */ ")
+		  (cond (table-ent
+		  	 (setq index (cadr (assoc (cadr table-ent)
+					    	  map
+					    	  )
+					   )
+			       )
+			 (patom index ",\n")
+			 )
+			(t
+			 (patom -1 ",\n")
+			 )
+			)
+		  (setq term (cdr term))
+		  )
+	   (setq non-terminals (cdr non-terminals))
+	   )
+    )
+  )
+
+(defun process-file (file-in)
+  (setq parse-dictionary (new-dictionary))
+  (setq terminals (fread-dictionary file-in parse-dictionary))
+  (setq non-terminals (fread-dictionary file-in parse-dictionary))
+  (setq table (fread-dictionary file-in parse-dictionary))
+  (setq list-of-productions (production-list table))
+  (setq start-symbol (cadaar table))
+  (setq temp (production-table list-of-productions))
+  (setq map (cadr temp))
+  (setq prod-table (dict-to-table (car temp) 0))
+  (print terminals)
+  (print non-terminals)
+  (print-parse-table prod-table map table terminals non-terminals)
+  (print prod-table)
+  )      
+
+(setq file-in stdin)
+(if argv
+    (setq file-in (fopen (car argv) 'r))
+    (if (null file-in)
+	(error (strcat "parser: can't open " (sprint (car argv))))
+	)
+    )
+
+(process-file file-in)
+(fclose file-in)
