@@ -636,7 +636,6 @@ def lola():
             top = False
 
         if top and is_action(top):
-            print("action %r" % top)
             if top == "@NONTERM":
                 non_term = lex_value
             elif top == "@RULES":
