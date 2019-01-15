@@ -110,6 +110,10 @@ def is_terminal(item):
 def is_action(item):
     return item[0] == '@'
 
+def error(msg):
+    print(msg)
+    exit(1)
+
 def test():
     global lex_value
     global value_stack
@@ -118,17 +122,13 @@ def test():
     stack = ('start',)
     token = False
     while True:
-        if not token:
-            token = lex()
+        if stack:
+            top = head(stack)
+            stack = rest(stack)
+        else:
+            top = False
 
-        if not stack:
-            if token == 'END':
-                return
-            error("parse stack empty at %r" % token)
-
-        top = head(stack)
-
-        if is_action(top):
+        if top and is_action(top):
             if top == "@PUSH":
                 push(lex_value)
             elif top == "@ADD":
@@ -148,17 +148,25 @@ def test():
                 push(-a)
             elif top == "@PRINT":
                 print("= %r" % pop())
-            stack = rest(stack)
-        elif is_terminal(top):
+            continue
+
+        if not token:
+            token = lex()
+
+        if not top:
+            if token == 'END':
+                return
+            error("parse stack empty at %r" % token)
+
+        if is_terminal(top):
             if top == token:
-                stack = rest(stack)
                 token = False
             else:
                 error("parse error. got %r expected %r" % (token, top))
         else:
-            key = (token, head(stack))
+            key = (token, top)
             if key not in table:
-                error("parse error at %r %r" % (token, head(stack)))
-            stack = table[key] + rest(stack)
+                error("parse error at %r %r" % (token, top))
+            stack = table[key] + stack
         
 test()

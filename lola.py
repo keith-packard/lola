@@ -161,11 +161,11 @@ parse(void *lex_context)
 #
 # the format of the grammar is:
 #
-# {"non-terminal": (("SYMBOL", "non-terminal", "#action"), (production), (production)),
+# {"non-terminal": (("SYMBOL", "non-terminal", "@action"), (production), (production)),
 #  "non-terminal": ((production), (production), (production)),
 #  }
 #
-# The start symbol must be named "start"
+# The start symbol must be named "start", the EOF token must be named "END"
 #
 
 end_token="END"
@@ -509,7 +509,7 @@ grammar = {
     start_symbol: (("non-term", start_symbol),
                    ()
                    ),
-    "non-term"  : (("@NONTERM", "SYMBOL", "COLON", "rules", "@RULES", "SEMI"),
+    "non-term"  : (("SYMBOL", "@NONTERM", "COLON", "rules", "@RULES", "SEMI"),
                    ),
     "rules"     : (("rule", "rules-p"),
                    ),
@@ -518,7 +518,7 @@ grammar = {
                    ),
     "rule"      : (("symbols", "@RULE"),
                    ),
-    "symbols"   : (("@SYMBOL", "SYMBOL", "symbols"),
+    "symbols"   : (("SYMBOL", "@SYMBOL", "symbols"),
                    (),
                    ),
     }
@@ -629,18 +629,14 @@ def lola():
     prod = ()
     prods = ()
     while True:
-        if not token:
-            token = lex()
-
-        if not stack:
-            if token == end_token:
-                return result
-            error("parse stack empty at %r" % token)
-
-        top = head(stack)
-
-        if is_action(top):
+        if stack:
+            top = head(stack)
             stack = rest(stack)
+        else:
+            top = False
+
+        if top and is_action(top):
+            print("action %r" % top)
             if top == "@NONTERM":
                 non_term = lex_value
             elif top == "@RULES":
@@ -652,17 +648,28 @@ def lola():
                 prod = ()
             elif top == "@SYMBOL":
                 prod = prod + (lex_value,)
-        elif is_terminal(top):
+            continue
+
+        if not token:
+            token = lex()
+
+#        print("token %r top %r stack %r" % (token, top, stack))
+
+        if not top:
+            if token == end_token:
+                return result
+            error("parse stack empty at %r" % token)
+
+        if is_terminal(top):
             if top == token:
-                stack = rest(stack)
                 token = False
             else:
                 error("%s:%d: parse error. got %r expected %r" % (lex_file_name, lex_line, token, top))
         else:
-            key = (token, head(stack))
+            key = (token, top)
             if key not in table:
-                error("%s:%d: parse error at %r %r" % (lex_file_name, lex_line, token, head(stack)))
-            stack = table[key] + rest(stack)
+                error("%s:%d: parse error at %r %r" % (lex_file_name, lex_line, token, top))
+            stack = table[key] + stack
         
 def to_c(string):
     return string.replace("-", "_")

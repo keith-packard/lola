@@ -36,5 +36,5 @@ term-p	: TIMES fact @TIMES@ term-p
 	;
 fact	: OP expr CP
 	| MINUS fact @NEGATE@
-	| @PUSH@ NUMBER
+	| NUMBER @PUSH@
 	;
