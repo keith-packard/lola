@@ -135,6 +135,7 @@ parse(void *lex_context)
 #ifdef PARSE_DEBUG
 	{
 	    int i;
+#ifdef token_name
 	    printf("token %s stack %s", token_names[token], token_names[top]);
 	    for (i = parse_stack_p-1; i >= 0; i--) {
 		if (!is_action(parse_stack[i]))
@@ -142,6 +143,11 @@ parse(void *lex_context)
 		else
 		    printf(" action %d", parse_stack[i]);
 	    }
+#else
+	    printf("token %d stack %d", token, top);
+	    for (i = parse_stack_p-1; i >= 0; i--)
+		printf(" %d", parse_stack[i]);
+#endif
 	    printf("\\n");
 	}
 #endif
@@ -831,6 +837,7 @@ def dump_c(grammar, parse_table, file=sys.stdout):
     print("", file=output)
     print("#ifdef TOKEN_NAMES", file=output)
     print("#undef TOKEN_NAMES", file=output)
+    print("#define token_name(a) token_names[a]", file=output);
     print("static const char *const token_names[] = {", file=output)
     print('0,', file=output);
     for terminal in terminals:
