@@ -27,6 +27,16 @@ parse_code = """
 
 static token_t parse_stack[PARSE_STACK_SIZE];
 
+#ifndef PARSE_TABLE_FETCH_KEY
+#define PARSE_TABLE_FETCH_KEY(addr) (*(addr))
+#endif
+#ifndef PARSE_TABLE_FETCH_TOKEN
+#define PARSE_TABLE_FETCH_TOKEN(addr) (*(addr))
+#endif
+#ifndef PARSE_TABLE_FETCH_PRODUCTION
+#define PARSE_TABLE_FETCH_PRODUCTION(addr) (*(addr))
+#endif
+
 static const token_t *
 match_state(token_t terminal, token_t non_terminal)
 {
@@ -35,13 +45,13 @@ match_state(token_t terminal, token_t non_terminal)
 
 	while (l <= h) {
 	    int m = (l + h) >> 1;
-	    if (parse_table[m].key < key)
+	    if (PARSE_TABLE_FETCH_KEY(&parse_table[m].key) < key)
 		l = m + 1;
 	    else
 		h = m - 1;
 	}
-	if (parse_table[l].key == key)
-	    return &production_table[production_index(parse_table[l].production)];
+	if (PARSE_TABLE_FETCH_KEY(&parse_table[l].key) == key)
+	    return &production_table[production_index(PARSE_TABLE_FETCH_PRODUCTION(&parse_table[l].production))];
 	return NULL;
 }
 
@@ -57,12 +67,13 @@ static inline bool
 parse_push(const token_t *tokens, int *parse_stack_p)
 {
     const token_t *t = tokens;
-    while (*t != TOKEN_NONE)
+    while (PARSE_TABLE_FETCH_TOKEN(t) != TOKEN_NONE)
 	t++;
     while (t != tokens) {
         if ((*parse_stack_p) >= PARSE_STACK_SIZE)
             return false;
-	parse_stack[(*parse_stack_p)++] = *--t;
+	--t;
+	parse_stack[(*parse_stack_p)++] = PARSE_TABLE_FETCH_TOKEN(t);
     }
     return true;
 }
@@ -774,7 +785,10 @@ def dump_c(grammar, parse_table, file=sys.stdout):
 
     prod_round = 1 << prod_shift
 
-    print("static const token_t production_table[] = {", file=output);
+    print("#ifndef PARSE_TABLE_DECLARATION", file=output)
+    print("#define PARSE_TABLE_DECLARATION(n) n", file=output)
+    print("#endif", file=output)
+    print("static const token_t PARSE_TABLE_DECLARATION(production_table)[] = {", file=output);
 
     prod_index = 0
     for key in parse_table:
@@ -805,7 +819,7 @@ def dump_c(grammar, parse_table, file=sys.stdout):
     print("#define production_index(i) ((i) << %d)" % prod_shift, file=output)
 
     print("typedef struct { parse_key_t key; uint8_t production; } __attribute__((packed)) parse_table_t;", file=output)
-    print("static const parse_table_t parse_table[] = {", file=output)
+    print("static const parse_table_t PARSE_TABLE_DECLARATION(parse_table)[] = {", file=output)
     for terminal in terminals:
         for non_terminal in non_terminals:
             key = (terminal, non_terminal)
