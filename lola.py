@@ -101,6 +101,7 @@ typedef enum {
     parse_return_syntax,
     parse_return_end,
     parse_return_oom,
+    parse_return_error,
 } parse_return_t;
 
 static parse_return_t
