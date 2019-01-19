@@ -121,6 +121,9 @@ parse(void *lex_context)
 	    default:
 		break;
 	    }
+#ifdef PARSE_ACTION_BOTTOM
+	    PARSE_ACTION_BOTTOM;
+#endif
 	    continue;
 	}
 
