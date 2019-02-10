@@ -20,6 +20,7 @@
 
 import sys
 import argparse
+import re
 
 actions_marker = "@@ACTIONS@@"
 
@@ -37,32 +38,43 @@ typedef uint32_t parse_stack_p_t;
 #endif
 #endif
 
-#ifndef PARSE_TABLE_FETCH_KEY
-#define PARSE_TABLE_FETCH_KEY(addr) (*(addr))
+#if NON_TERMINAL_SIZE < 256
+typedef uint8_t non_terminal_index_t;
+#else
+#if NON_TERMINAL_SIZE < 65536
+typedef uint16_t non_terminal_index_t;
+#else
+typedef uint32_t non_terminal_index_t;
 #endif
+#endif
+
 #ifndef PARSE_TABLE_FETCH_TOKEN
 #define PARSE_TABLE_FETCH_TOKEN(addr) (*(addr))
 #endif
-#ifndef PARSE_TABLE_FETCH_PRODUCTION
-#define PARSE_TABLE_FETCH_PRODUCTION(addr) (*(addr))
+#ifndef PARSE_TABLE_FETCH_INDEX
+#define PARSE_TABLE_FETCH_INDEX(addr) (*(addr))
 #endif
 
 static const token_t *
 match_state(token_t terminal, token_t non_terminal)
 {
-	parse_key_t	key = parse_key(terminal, non_terminal);
-	int		l = 0, h = (int) (sizeof(parse_table) / sizeof(parse_table[0])) - 1;
-
-	while (l <= h) {
-	    int m = (l + h) >> 1;
-	    if (PARSE_TABLE_FETCH_KEY(&parse_table[m].key) < key)
-		l = m + 1;
-	    else
-		h = m - 1;
-	}
-	if (PARSE_TABLE_FETCH_KEY(&parse_table[l].key) == key)
-	    return &production_table[production_index(PARSE_TABLE_FETCH_PRODUCTION(&parse_table[l].production))];
+	token_key_t terminal_key = terminal;
+	token_key_t term;
+	for (term = 0; term < sizeof(terminal_table) / sizeof(terminal_table[0]); term++)
+		if (PARSE_TABLE_FETCH_TOKEN(&terminal_table[term].token) == terminal_key)
+			goto got_term;
 	return NULL;
+got_term:;
+	token_key_t non_terminal_key = non_terminal - (FIRST_NON_TERMINAL - 1);
+	non_terminal_index_t start = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term].index));
+	non_terminal_index_t end = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term+1].index));
+	non_terminal_index_t non_term;
+	for (non_term = start; non_term < end; non_term++)
+		if (PARSE_TABLE_FETCH_TOKEN(&non_terminal_table[non_term].token) == non_terminal_key)
+			goto got_non_term;
+	return NULL;
+got_non_term:
+	return &production_table[production_index(PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term].index))];
 }
 
 static inline token_t
@@ -493,14 +505,41 @@ def get_terminals(grammar):
                     terminals += (token,)
     return terminals
 
+def count_actions(grammar):
+    actions = 0
+    for non_terminal, prods in grammar.items():
+        for prod in prods:
+            for token in prod:
+                if is_action(token):
+                    actions += 1
+    return actions
+
+def compress_action(action):
+    # trailing comments
+    action = re.sub("//.*\n", "\n", action)
+    # embedded comments
+    action = re.sub("/\*.*?\*/", " ", action)
+    # compress whitespace
+    action = re.sub("\s+", " ", action)
+    return action
+
+def has_action(actions, action):
+    for a in actions:
+        if compress_action(a) == compress_action(action):
+            return True
+    return False
+
+def action_sort(action):
+    return len(compress_action(action))
+
 def get_actions(grammar):
     actions = ()
     for non_terminal, prods in grammar.items():
         for prod in prods:
             for token in prod:
-                if is_action(token) and not token in actions:
+                if is_action(token) and not has_action(actions, token):
                     actions += (token,)
-    return actions
+    return sorted(actions, key=action_sort)
 
 #
 # produce a parse table for the given grammar
@@ -712,7 +751,7 @@ def action_name(token_values, action):
             action = action[0:end]
         return "ACTION_" + action
     else:
-        return "ACTION_%d" % token_values[action]
+        return "ACTION_%d" % token_values[compress_action(action)]
 
 def action_value(action):
     if action_has_name(action):
@@ -761,7 +800,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     num_non_terminals = len(non_terminals)
     actions = get_actions(grammar)
     num_actions = len(actions)
-    print_c("/* %d terminals %d non_terminals %d actions %d parse table entries */" % (num_terminals, num_non_terminals, num_actions, len(parse_table)), file=output)
+    print_c("/* %d terminals %d non_terminals %d actions (%d duplicates) %d parse table entries */" % (num_terminals, num_non_terminals, num_actions, count_actions(grammar) - num_actions, len(parse_table)), file=output)
     print_c("", file=output)
     print_c("#if !defined(GRAMMAR_TABLE) && !defined(TOKEN_NAMES) && !defined(PARSE_CODE)", file=output)
     print_c("typedef enum {", file=output)
@@ -781,8 +820,8 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
         value += 1
     print_c("    FIRST_ACTION = %d," % value, file=output)
     for action in actions:
-        token_value[action] = value
-        print_c("    %s = %d," % (action_name(token_value, action), value), file=output)
+        token_value[compress_action(action)] = value
+        print_c("    %s = %d, // %s" % (action_name(token_value, action), value, compress_action(action)), file=output)
         value += 1
     print_c("} __attribute__((packed)) token_t;", file=output)
     print_c("#endif", file=output)
@@ -809,6 +848,16 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
 
     prod_round = 1 << prod_shift
 
+    # Compute total size of non-terminal table to know what padding we'll need
+
+    total_non_terminal_table = len(parse_table)
+
+    non_terminal_shift = 0
+    while 1 << (8 + non_terminal_shift) < total_non_terminal_table:
+        non_terminal_shift += 1
+
+    non_terminal_round = 1 << non_terminal_shift
+
     print_c("#ifndef PARSE_TABLE_DECLARATION", file=output)
     print_c("#define PARSE_TABLE_DECLARATION(n) n", file=output)
     print_c("#endif", file=output)
@@ -831,37 +880,52 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
             prod_index += 1
     print_c("};", file=output)
 
-    key_type = "uint32_t"
-    key_shift = 16
-    if num_terminals < 256 and num_non_terminals < 256:
-        key_type = "uint16_t"
-        key_shift = 8
+    if num_non_terminals < 255 and num_terminals < 255:
+        token_key_type = "uint8_t"
+    else:
+        token_key_type = "uint16_t"
 
-    print_c("typedef %s parse_key_t;" % key_type, file=output)
-    print_c("#define parse_key(terminal, non_terminal) ((((terminal) - %d) << %d) | ((non_terminal) - %d))" %
-          (first_terminal, key_shift, first_non_terminal), file=output)
+    print_c("typedef %s token_key_t;" % token_key_type, file=output)
+
     print_c("#define production_index(i) ((i) << %d)" % prod_shift, file=output)
+    print_c("#define non_terminal_index(i) ((i) << %d)" % non_terminal_shift, file=output)
+    print_c("typedef struct { token_t token; uint8_t index; } __attribute__((packed)) parse_table_t;", file=output)
 
-    print_c("typedef struct { parse_key_t key; uint8_t production; } __attribute__((packed)) parse_table_t;", file=output)
-    print_c("static const parse_table_t PARSE_TABLE_DECLARATION(parse_table)[] = {", file=output)
+    print_c("static const parse_table_t PARSE_TABLE_DECLARATION(non_terminal_table)[] = {", file=output)
+
+    terminal_index = 0
+    terminal_indices = {}
     for terminal in terminals:
+        terminal_indices[terminal] = terminal_index
+        print_c("    /* %s %d */" % (terminal_name(terminal), terminal_index), file=output)
         for non_terminal in non_terminals:
             key = (terminal, non_terminal)
             if key in parse_table:
                 prod = parse_table[key]
-                print_c("    { parse_key(%s, %s), %d }," % (terminal_name(terminal), non_terminal_name(non_terminal), prod_map[prod] >> prod_shift), file=output)
+                print_c("    { %s - (FIRST_NON_TERMINAL - 1), %d }," % (non_terminal_name(non_terminal), prod_map[prod] >> prod_shift), file=output)
+                terminal_index += 1
+        p = pad(terminal_index, non_terminal_round)
+        for i in range(p):
+            print_c("    { TOKEN_NONE, 0 },", file=output)
+            terminal_index += 1
     print_c("};", file=output)
+    print_c("#define NON_TERMINAL_SIZE %d" % terminal_index, file=output)
+    print_c("static const parse_table_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
+    for terminal in terminals:
+        print_c("    { %s, %d }," % (terminal_name(terminal), terminal_indices[terminal] >> non_terminal_shift), file=output)
+    print_c("    { TOKEN_NONE, %d }," % (terminal_index >> non_terminal_shift), file=output)
+    print_c("};", file=output);
     print_c("#endif /* GRAMMAR_TABLE */", file=output)
     print_c("", file=output)
     print_c("#ifdef TOKEN_NAMES", file=output)
     print_c("#undef TOKEN_NAMES", file=output)
     print_c("#define token_name(a) token_names[a]", file=output);
     print_c("static const char *const token_names[] = {", file=output)
-    print_c('0,', file=output);
+    print_c('    0,', file=output);
     for terminal in terminals:
-        print_c('"%s",' % (terminal), file=output)
+        print_c('    "%s",' % (terminal), file=output)
     for non_terminal in non_terminals:
-        print_c('"%s",' % (non_terminal), file=output)
+        print_c('    "%s",' % (non_terminal), file=output)
     print_c("};", file=output)
     print_c("#endif /* TOKEN_NAMES */", file=output)
     print_c("", file=output)
