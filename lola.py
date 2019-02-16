@@ -251,8 +251,12 @@ def head(list):
 def rest(list):
     return list[1:]
 
+def fprint(msg, end='\n', file=sys.stdout):
+    file.write(msg)
+    file.write(end)
+
 def error(msg):
-    print(msg, file=sys.stderr)
+    fprint(msg, file=sys.stderr)
     exit(1)
 
 #
@@ -443,7 +447,7 @@ def make_entry(terminal, non_terminal, production):
 def add_dict(a,b):
     for key,value in b.items():
         if key in a:
-            print("multiple productions match %r - %r and %r" % (key, value, a[key]), file=sys.stderr)
+            fprint("multiple productions match %r - %r and %r" % (key, value, a[key]), file=sys.stderr)
             if len(value) < len(a[key]):
                 continue
         a[key] = value
@@ -551,26 +555,25 @@ def ll (grammar):
     non_terminals = get_non_terminals(grammar)
     return ll_non_terminals(grammar, non_terminals)
 
-
 def dump_table(table, file=sys.stdout):
-    print("Parse table", file=file)
+    fprint("Parse table", file=file)
     for key,value in table.items():
-        print("\t%r -> %r" % (key, value), file=file)
+        fprint("\t%r -> %r" % (key, value), file=file)
 
 def dump_grammar(grammar, file=sys.stdout):
     for non_term, prods in grammar.items():
-        print("%-20.20s" % non_term, end='', file=file)
+        fprint("%-20.20s" % non_term, end='', file=file)
         first=True
         for prod in prods:
             if first:
-                print(":", end='', file=file)
+                fprint(":", end='', file=file)
                 first = False
             else:
-                print("                    |", end='', file=file)
+                fprint("                    |", end='', file=file)
             for token in prod:
-                print(" %s" % token, end='', file=file)
-            print("", file=file)
-        print("                    ;", file=file)
+                fprint(" %s" % token, end='', file=file)
+            fprint("", file=file)
+        fprint("                    ;", file=file)
 
 grammar = {
     start_symbol: (("non-term", start_symbol),
@@ -777,7 +780,7 @@ def token_name(token_values, token):
         return non_terminal_name(token)
 
 def dump_python(grammar, parse_table, file=sys.stdout):
-    print("parse_table = %r" % parse_table, file=file)
+    fprint("parse_table = %r" % parse_table, file=file)
 
 def pad(value, round):
     p = value % round
@@ -790,7 +793,7 @@ c_line = 1
 def print_c(string, end='\n', file=sys.stdout):
     global c_line
     c_line += string.count("\n") + end.count("\n")
-    print(string, file=file, end=end)
+    fprint(string, file=file, end=end)
 
 def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     output=file
