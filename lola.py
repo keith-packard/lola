@@ -790,7 +790,7 @@ def pad(value, round):
 
 c_line = 1
 
-def print_c(string, end='\n', file=sys.stdout):
+def print_c(string, end='\n', file=None):
     global c_line
     c_line += string.count("\n") + end.count("\n")
     fprint(string, file=file, end=end)
@@ -803,7 +803,8 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     num_non_terminals = len(non_terminals)
     actions = get_actions(grammar)
     num_actions = len(actions)
-    print_c("/* %d terminals %d non_terminals %d actions (%d duplicates) %d parse table entries */" % (num_terminals, num_non_terminals, num_actions, count_actions(grammar) - num_actions, len(parse_table)), file=output)
+    print_c("/* %d terminals %d non_terminals %d actions (%d duplicates) %d parse table entries */" %
+            (num_terminals, num_non_terminals, num_actions, count_actions(grammar) - num_actions, len(parse_table)), file=output)
     print_c("", file=output)
     print_c("#if !defined(GRAMMAR_TABLE) && !defined(TOKEN_NAMES) && !defined(PARSE_CODE)", file=output)
     print_c("typedef enum {", file=output)
@@ -824,7 +825,8 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("    FIRST_ACTION = %d," % value, file=output)
     for action in actions:
         token_value[compress_action(action)] = value
-        print_c("    %s = %d, // %s" % (action_name(token_value, action), value, compress_action(action)), file=output)
+        print_c("    %s = %d, // %s" %
+                (action_name(token_value, action), value, compress_action(action)), file=output)
         value += 1
     print_c("} __attribute__((packed)) token_t;", file=output)
     print_c("#endif", file=output)
@@ -864,6 +866,22 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("#ifndef PARSE_TABLE_DECLARATION", file=output)
     print_c("#define PARSE_TABLE_DECLARATION(n) n", file=output)
     print_c("#endif", file=output)
+
+    #
+    # Dump production table.
+    #
+    # This table contains all of the productions in the grammar.
+    # When the top of the parse stack is a non-terminal, the
+    # production matching that non-terminal and the current input
+    # token replaces the top of the parse stack.
+    #
+    # Each production is stored in reverse order so that the
+    # tokens can be simply pushed in order. The productions are
+    # terminated with TOKEN_NONE, and then padded to a multiple
+    # of a power of two tokens so that the index into this
+    # table can be stored in a single byte.
+    #
+
     print_c("static const token_t PARSE_TABLE_DECLARATION(production_table)[] = {", file=output);
 
     prod_index = 0
@@ -871,16 +889,22 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
         prod = parse_table[key]
         if prod not in prod_map:
             prod_map[prod] = prod_index
+
             print_c("    /* %4d */   " % prod_index, end='', file=output)
             for token in prod[::-1]:
                 print_c(" %s," % token_name(token_value, token), end='', file=output)
                 prod_index += 1
+
+            # Pad the production with TOKEN_NONE to
+            # allow a single byte to index this table
+            #
             p = pad(prod_index + 1, prod_round)
             for i in range(0,p):
                 print_c(" TOKEN_NONE,", end='', file=output)
                 prod_index += 1
             print_c(" TOKEN_NONE,", file=output)
             prod_index += 1
+
     print_c("};", file=output)
 
     if num_non_terminals < 255 and num_terminals < 255:
@@ -894,32 +918,79 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("#define non_terminal_index(i) ((i) << %d)" % non_terminal_shift, file=output)
     print_c("typedef struct { token_t token; uint8_t index; } __attribute__((packed)) parse_table_t;", file=output)
 
+    #
+    # Dump the table mapping non-terminals to productions
+    #
+    # This table is indexed by the terminal table so that
+    # the entries need not include the terminal value as well
+    #
+
     print_c("static const parse_table_t PARSE_TABLE_DECLARATION(non_terminal_table)[] = {", file=output)
 
     terminal_index = 0
     terminal_indices = {}
     for terminal in terminals:
         terminal_indices[terminal] = terminal_index
-        print_c("    /* %s %d */" % (terminal_name(terminal), terminal_index), file=output)
+
+        # Add a comment marking the start of the table
+        # entries for this terminal
+        
+        print_c("    /* %s %d */" %
+                (terminal_name(terminal),
+                 terminal_index),
+                file=output)
+
         for non_terminal in non_terminals:
             key = (terminal, non_terminal)
             if key in parse_table:
                 prod = parse_table[key]
-                print_c("    { %s - (FIRST_NON_TERMINAL - 1), %d }," % (non_terminal_name(non_terminal), prod_map[prod] >> prod_shift), file=output)
+                print_c("    { %s - (FIRST_NON_TERMINAL - 1), %d }," %
+                        (non_terminal_name(non_terminal),
+                         prod_map[prod] >> prod_shift),
+                        file=output)
                 terminal_index += 1
+
+        #
+        # Pad the table so that it can be
+        # indexed by an 8-bit value shifted by a constant
+        #
+
         p = pad(terminal_index, non_terminal_round)
         for i in range(p):
             print_c("    { TOKEN_NONE, 0 },", file=output)
             terminal_index += 1
+
     print_c("};", file=output)
     print_c("#define NON_TERMINAL_SIZE %d" % terminal_index, file=output)
+
+    #
+    # Dump the table mapping each terminal to a set of
+    # non-terminal/production bindings
+    #
+    # This table holds indices into the non-terminal table cooresponding
+    # to each terminal.
+    #
+
     print_c("static const parse_table_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
+
     for terminal in terminals:
-        print_c("    { %s, %d }," % (terminal_name(terminal), terminal_indices[terminal] >> non_terminal_shift), file=output)
+        print_c("    { %s, %d }," %
+                (terminal_name(terminal),
+                 terminal_indices[terminal] >> non_terminal_shift),
+                file=output)
+
     print_c("    { TOKEN_NONE, %d }," % (terminal_index >> non_terminal_shift), file=output)
     print_c("};", file=output);
     print_c("#endif /* GRAMMAR_TABLE */", file=output)
     print_c("", file=output)
+
+    #
+    # Dump a table of token names.
+    #
+    # This is not usually included in the resulting program,
+    # but can be useful for debugging
+    #
+
     print_c("#ifdef TOKEN_NAMES", file=output)
     print_c("#undef TOKEN_NAMES", file=output)
     print_c("#define token_name(a) token_names[a]", file=output);
@@ -932,6 +1003,14 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("};", file=output)
     print_c("#endif /* TOKEN_NAMES */", file=output)
     print_c("", file=output)
+
+    #
+    # Dump the parsing code
+    #
+    # This is the parse_code from above with
+    # all of the actions included at the right spot
+    #
+
     print_c("#ifdef PARSE_CODE", file=output)
     print_c("#undef PARSE_CODE", file=output)
 
