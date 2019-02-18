@@ -31,14 +31,14 @@ calc: calc.c calc-gram.h
 	cc $(CFLAGS) -o $@ calc.c
 
 calc-gram.h: calc-gram.ll lola
-	./lola -o $@ calc-gram.ll
+	python3 ./lola.py -o $@ calc-gram.ll
 
 pycalc: pycalc.py pycalc_gram.py
 	cp pycalc.py $@
 	chmod +x pycalc
 
 pycalc_gram.py: pycalc_gram.ll lola
-	./lola -o $@ --format=python pycalc_gram.ll
+	python3 ./lola.py -o $@ --format=python pycalc_gram.ll
 
 install: lola
 	install lola $(BINDIR)
