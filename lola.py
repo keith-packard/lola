@@ -528,6 +528,8 @@ def compress_action(action):
     action = re.sub("/\*.*?\*/", " ", action)
     # compress whitespace
     action = re.sub("\s+", " ", action)
+    # remove leading and trailing whitespace
+    action = action.strip('@ \t\n')
     return action
 
 def has_action(actions, action):
