@@ -21,6 +21,7 @@
 import sys
 import argparse
 import re
+import pprint
 
 actions_marker = "@@ACTIONS@@"
 
@@ -785,7 +786,9 @@ def token_name(token_values, token):
         return non_terminal_name(token)
 
 def dump_python(grammar, parse_table, file=sys.stdout):
-    fprint("parse_table = %r" % parse_table, file=file)
+    fprint('parse_table = \\', file=file)
+    pp = pprint.PrettyPrinter(indent=4, stream=file)
+    pp.pprint(parse_table)
 
 def pad(value, round):
     p = value % round
