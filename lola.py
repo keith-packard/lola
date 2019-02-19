@@ -186,7 +186,7 @@ parse(void *lex_context)
 		return parse_return_syntax;
             }
 	    token = TOKEN_NONE;
-	} else {
+	} else if (!match_null(token, top)) {
 	    const token_t *tokens = match_state(token, top);
 
 	    if (!tokens)
@@ -850,9 +850,11 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
 
     total_tokens = 0;
     for key in parse_table:
+        if len(parse_table[key]) == 0:
+            continue
         prod = parse_table[key] + (key[1],)
         if prod not in prod_handled:
-            total_tokens += 1 + len(prod)
+            total_tokens += 2 + len(prod)
             prod_handled[prod] = True
 
     prod_shift = 0
@@ -876,6 +878,47 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("#endif", file=output)
 
     #
+    # Generate bitmap of null productions
+    #
+    
+    print_c("#define PARSE_NULL_ID(term,nonterm) (((term) - 1) + ((nonterm) - FIRST_NON_TERMINAL) * (FIRST_NON_TERMINAL-1))",
+            file=output)
+    print_c("#define PARSE_NULL_BYTE(term,nonterm) (PARSE_NULL_ID(term,nonterm) >> 3)", file=output)
+    print_c("#define PARSE_NULL_BIT(term,nonterm) (PARSE_NULL_ID(term,nonterm) & 7)", file=output)
+    print_c("#define match_null(term,nonterm) ((PARSE_TABLE_FETCH_INDEX(&null_table[PARSE_NULL_BYTE(term,nonterm)]) >> PARSE_NULL_BIT(term,nonterm)) & 1)", file=output)
+
+    total_null_bytes = (num_terminals * num_non_terminals + 7) // 8
+    print_c("static const uint8_t PARSE_TABLE_DECLARATION(null_table)[%d] = {" %
+            total_null_bytes, file=output);
+
+    byte = 0
+    shift = 0
+    byte_seen = False
+
+    for non_terminal in non_terminals:
+        for terminal in terminals:
+            key = (terminal, non_terminal)
+            if key in parse_table and len(parse_table[key]) == 0:
+                if not byte_seen:
+                    print_c("    [%d] =" % byte, file=output)
+                    byte_seen = True
+                print_c("        (1 << %d) | /* %s %s */" %
+                        (shift, terminal, non_terminal),
+                        file = output)
+            shift += 1
+            if shift == 8:
+                if byte_seen:
+                    print_c("        0,", file=output)
+                    byte_seen = False
+                shift = 0
+                byte += 1
+
+    if shift != 0:
+        if byte_seen:
+            print_c("    0", file=output)
+    print_c("};", file=output)
+                    
+    #
     # Dump production table.
     #
     # This table contains all of the productions in the grammar.
@@ -894,6 +937,8 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
 
     prod_index = 0
     for key in parse_table:
+        if len(parse_table[key]) == 0:
+            continue
         prod = parse_table[key] + (key[1],)
         if prod not in prod_map:
             prod_map[prod] = prod_index
@@ -951,6 +996,8 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
         for non_terminal in non_terminals:
             key = (terminal, non_terminal)
             if key in parse_table:
+                if len(parse_table[key]) == 0:
+                    continue
                 prod = parse_table[key] + (key[1],)
                 print_c("    %d, /* %s */" %
                         (prod_map[prod] >> prod_shift,
