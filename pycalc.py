@@ -99,7 +99,7 @@ def pop():
 #       | MINUS expr
 #       |
 
-from lola_test_gram import *
+from pycalc_gram import *
 
 def is_non_terminal(item):
     return item[0].islower()
