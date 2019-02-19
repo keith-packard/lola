@@ -65,16 +65,19 @@ match_state(token_t terminal, token_t non_terminal)
 			goto got_term;
 	return NULL;
 got_term:;
-	token_key_t non_terminal_key = non_terminal - (FIRST_NON_TERMINAL - 1);
 	non_terminal_index_t start = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term].index));
 	non_terminal_index_t end = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term+1].index));
 	non_terminal_index_t non_term;
-	for (non_term = start; non_term < end; non_term++)
-		if (PARSE_TABLE_FETCH_TOKEN(&non_terminal_table[non_term].token) == non_terminal_key)
-			goto got_non_term;
+	for (non_term = start; non_term < end; non_term++) {
+		uint8_t i = PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term]);
+		if (i == 0xff)
+			break;
+
+		const token_t *production = &production_table[production_index(i)];
+		if (*production == non_terminal)
+			return production + 1;
+	}
 	return NULL;
-got_non_term:
-	return &production_table[production_index(PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term].index))];
 }
 
 static inline token_t
@@ -842,7 +845,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
 
     total_tokens = 0;
     for key in parse_table:
-        prod = parse_table[key]
+        prod = parse_table[key] + (key[1],)
         if prod not in prod_handled:
             total_tokens += 1 + len(prod)
             prod_handled[prod] = True
@@ -886,7 +889,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
 
     prod_index = 0
     for key in parse_table:
-        prod = parse_table[key]
+        prod = parse_table[key] + (key[1],)
         if prod not in prod_map:
             prod_map[prod] = prod_index
 
@@ -925,7 +928,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     # the entries need not include the terminal value as well
     #
 
-    print_c("static const parse_table_t PARSE_TABLE_DECLARATION(non_terminal_table)[] = {", file=output)
+    print_c("static const uint8_t PARSE_TABLE_DECLARATION(non_terminal_table)[] = {", file=output)
 
     terminal_index = 0
     terminal_indices = {}
@@ -943,10 +946,10 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
         for non_terminal in non_terminals:
             key = (terminal, non_terminal)
             if key in parse_table:
-                prod = parse_table[key]
-                print_c("    { %s - (FIRST_NON_TERMINAL - 1), %d }," %
-                        (non_terminal_name(non_terminal),
-                         prod_map[prod] >> prod_shift),
+                prod = parse_table[key] + (key[1],)
+                print_c("    %d, /* %s */" %
+                        (prod_map[prod] >> prod_shift,
+                         non_terminal_name(non_terminal)),
                         file=output)
                 terminal_index += 1
 
@@ -957,7 +960,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
 
         p = pad(terminal_index, non_terminal_round)
         for i in range(p):
-            print_c("    { TOKEN_NONE, 0 },", file=output)
+            print_c("    0xff,", file=output)
             terminal_index += 1
 
     print_c("};", file=output)
