@@ -1030,7 +1030,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
         print_c('#line %d "%s"' % (action_line(action), lex_file_name), file=output)
         print_c("        %s; break;" % action_value(action), file=output)
 
-    print_c('#line %d "%s"' % (c_line, filename), file=output)
+    print_c('#line %d "%s"' % (c_line + 1, filename), file=output)
     print_c("%s" % last_bit, end='', file=output)
     print_c("#endif /* PARSE_CODE */", file=output)
 
