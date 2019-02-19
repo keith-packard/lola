@@ -75,7 +75,7 @@ got_term:;
 			break;
 
 		const token_t *production = &production_table[production_index(i)];
-		if (*production == non_terminal)
+		if (PARSE_TABLE_FETCH_TOKEN(production) == non_terminal)
 			return production + 1;
 	}
 	return NULL;
