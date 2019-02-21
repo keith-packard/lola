@@ -18,8 +18,10 @@
 
 CFLAGS=-g -O2 -I. -Wall -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wnested-externs
 
-PREFIX=$(DESTDIR)/usr/local
+DESTDIR = 
+PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
+MANDIR = $(PREFIX)/share/man
 
 all: lola calc pycalc
 
@@ -40,8 +42,11 @@ pycalc: pycalc.py pycalc_gram.py
 pycalc_gram.py: pycalc_gram.ll lola
 	python3 ./lola.py -o $@ --format=python pycalc_gram.ll
 
-install: lola
-	install lola $(BINDIR)
+install: lola lola.1
+	install -d $(DESTDIR)$(BINDIR)
+	install lola $(DESTDIR)$(BINDIR)
+	install -d $(DESTDIR)$(MANDIR)/man1
+	install lola.1 $(DESTDIR)$(MANDIR)/man1
 
 clean:
 	rm -f lola calc pycalc calc-gram.h pycalc_gram.py
