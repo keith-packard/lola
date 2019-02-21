@@ -1,0 +1,25 @@
+.\"
+.\" Copyright © 2019 Keith Packard <keithp@keithp.com>
+.\"
+.\" This program is free software; you can redistribute it and/or modify
+.\" it under the terms of the GNU General Public License as published by
+.\" the Free Software Foundation, either version 2 of the License, or
+.\" (at your option) any later version.
+.\"
+.\" This program is distributed in the hope that it will be useful, but
+.\" WITHOUT ANY WARRANTY; without even the implied warranty of
+.\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+.\" General Public License for more details.
+.\"
+.TH LOLA 1 "lola" ""
+.SH NAME
+lola \- LL parser generator
+.SH SYNOPSIS
+.B "lola" {--format c|python} {--output filename} grammar.ll
+.SH DESCRIPTION
+.I lola
+is a general purpose parser generator for context-free LL
+languages. It can generate a C program or Python data structure to
+parse the language represented by context-free LL grammars.
+.SH AUTHOR
+Keith Packard
