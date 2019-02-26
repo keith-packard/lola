@@ -953,14 +953,43 @@ def optimize(grammar, parse_table, terminals, non_terminals, output):
                 if not term_sup in possibles[term_sub]:
                     possibles[term_sub] = possibles[term_sub] + (term_sup,)
         
+
+    # Trim possible terminal mappings so that only the smallest subset
+    # along each path is present. This should leave the few entries
+    # for each terminal set which offers real options
+
+    new_possibles = {}
+
+    for sub, sups in possibles.items():
+        new_sups = ()
+        for sup in sups:
+            for check in sups:
+                if sup != check and is_subset(check, sup):
+                    break
+            else:
+                new_sups = new_sups + (sup,)
+        new_possibles[sub] = new_sups
+
     if False:
         print_c("/*", file=output)
-        print_c(" * Possible graph edges", file=output)
+        print_c(" * Possible graph edges %d total %d minimal" %
+                (total_bindings(possibles),
+                 total_bindings(new_possibles)),
+                file=output)
         print_c(" *", file=output)
         for terms in possibles:
+            print_c(" *", file=output)
+            print_c(" * all mappings for %s" % (terms,), file=output)
             for poss in possibles[terms]:
                 print_c(" * %r -> %r" % (terms, poss), file=output)
+            print_c(" *", file=output)
+            print_c(" * minimal mappings for %s" % (terms,), file=output)
+            for poss in new_possibles[terms]:
+                print_c(" * %r -> %r" % (terms, poss), file=output)
+            print_c(" *", file=output)
         print_c(" */", file=output)
+
+    possibles = new_possibles
 
     best_table = None
     best_binding = None
@@ -992,9 +1021,6 @@ def optimize(grammar, parse_table, terminals, non_terminals, output):
     print("best len simple %d" % best_len_simple)
 
     return (best_binding_simple, best_table_simple)
-
-    num_bindings = total_bindings(possibles)
-    print("total bindings %d" % num_bindings)
 
     for n in range(total_bindings(possibles)):
         binding = pick_binding(possibles, n)
