@@ -69,11 +69,11 @@ got_term:;
 	non_terminal_index_t non_term = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term].index));
 	for (;;) {
 		uint8_t i = PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term]);
-		if (i == 0xff) {
+		if (i == 0xfe) {
 			i = PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term+1]);
-			if (i == 0xff)
-				break;
 			non_term = non_terminal_index(i);
+		} else if (i == 0xff) {
+			break;
 		} else {
 			const token_t *production = &production_table[production_index(i)];
 			if (PARSE_TABLE_FETCH_TOKEN(production) == non_terminal) {
@@ -1234,7 +1234,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
         for prod_ent in prods:
             non_terminal, prod = prod_ent
             key = prod + (non_terminal,)
-            print_c("        %4d, /* %18s:" %
+            print_c("        %3d,     /* %18s:" %
                     (prod_map[key] >> prod_shift,
                      non_terminal),
                     end='', file=output)
@@ -1246,20 +1246,16 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
             print_c(" */", file=output)
             best_index += 1
         
-        print_c("      0xff, /* */", file=output)
-
-        best_index += 1
-
         if terms in best_binding:
             next_terms = best_binding[terms]
-            print_c("      %d, /* %s */" %
+            print_c("      0xfe, %3d, /* %s */" %
                     (best_indices[next_terms] >> best_shift,
                      terminal_names(next_terms)),
                     file=output)
+            best_index += 2
         else:
-            print_c("      0xff, /* */", file=output)
-
-        best_index += 1
+            print_c("      0xff,", file=output)
+            best_index += 1
 
         p = pad(best_index, non_terminal_round)
         for i in range(p):
