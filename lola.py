@@ -970,12 +970,12 @@ def optimize(grammar, parse_table, terminals, non_terminals, output):
                 new_sups = new_sups + (sup,)
         new_possibles[sub] = new_sups
 
+    print_c("/*", file=output)
+    print_c(" * Possible graph edges %d total %d minimal" %
+            (total_bindings(possibles),
+             total_bindings(new_possibles)),
+            file=output)
     if False:
-        print_c("/*", file=output)
-        print_c(" * Possible graph edges %d total %d minimal" %
-                (total_bindings(possibles),
-                 total_bindings(new_possibles)),
-                file=output)
         print_c(" *", file=output)
         for terms in possibles:
             print_c(" *", file=output)
@@ -987,7 +987,8 @@ def optimize(grammar, parse_table, terminals, non_terminals, output):
             for poss in new_possibles[terms]:
                 print_c(" * %r -> %r" % (terms, poss), file=output)
             print_c(" *", file=output)
-        print_c(" */", file=output)
+
+    print_c(" */", file=output)
 
     possibles = new_possibles
 
