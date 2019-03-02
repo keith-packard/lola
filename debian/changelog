@@ -1,3 +1,10 @@
+lola (1.1-1) unstable; urgency=medium
+
+  * Reduce size of non-terminal table
+  * Switch from arch: any to arch: all
+
+ -- Keith Packard <keithp@keithp.com>  Sat, 02 Mar 2019 08:45:46 -0800
+
 lola (1.0-1) unstable; urgency=medium
 
   * Initial upload
