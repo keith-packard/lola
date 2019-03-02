@@ -66,17 +66,21 @@ match_state(token_t terminal, token_t non_terminal)
 			goto got_term;
 	return NULL;
 got_term:;
-	non_terminal_index_t start = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term].index));
-	non_terminal_index_t end = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term+1].index));
-	non_terminal_index_t non_term;
-	for (non_term = start; non_term < end; non_term++) {
+	non_terminal_index_t non_term = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term].index));
+	for (;;) {
 		uint8_t i = PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term]);
-		if (i == 0xff)
+		if (i == 0xfe) {
+			i = PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term+1]);
+			non_term = non_terminal_index(i);
+		} else if (i == 0xff) {
 			break;
-
-		const token_t *production = &production_table[production_index(i)];
-		if (PARSE_TABLE_FETCH_TOKEN(production) == non_terminal)
-			return production + 1;
+		} else {
+			const token_t *production = &production_table[production_index(i)];
+			if (PARSE_TABLE_FETCH_TOKEN(production) == non_terminal) {
+				return production + 1;
+			}
+			non_term++;
+		}
 	}
 	return NULL;
 }
@@ -186,7 +190,7 @@ parse(void *lex_context)
 		return parse_return_syntax;
             }
 	    token = TOKEN_NONE;
-	} else if (!match_null(token, top)) {
+	} else {
 	    const token_t *tokens = match_state(token, top);
 
 	    if (!tokens)
@@ -774,6 +778,16 @@ def action_value(action):
 def terminal_name(terminal):
     return to_c(terminal)
 
+def terminal_names(terminals):
+    names = None
+    for terminal in terminals:
+        name = terminal_name(terminal)
+        if names:
+            names += " " + name
+        else:
+            names = name
+    return names
+
 def non_terminal_name(non_terminal):
     return "NON_TERMINAL_" + to_c(non_terminal)
 
@@ -802,6 +816,221 @@ def print_c(string, end='\n', file=None):
     global c_line
     c_line += string.count("\n") + end.count("\n")
     fprint(string, file=file, end=end)
+
+def pretty(title, a):
+    print("%s" % title)
+    pp = pprint.PrettyPrinter(indent=4, stream=sys.stdout)
+    pp.pprint(a)
+
+def is_subset(sub,sup):
+    return set(sub) - set(sup) == set()
+
+def pick_binding(possibles, n):
+    binding = {}
+    for sub, supers in possibles.items():
+        pick = n % len(supers)
+        n //= len(supers)
+        binding[sub] = supers[pick]
+    if n:
+        return None
+    return binding
+
+def pick_binding_simple(possibles, indices):
+    binding = {}
+    for sub, supers in possibles.items():
+        pick = indices[sub]
+        binding[sub] = supers[pick]
+    return binding
+
+def total_bindings(possibles):
+    n = 1
+    for sub, supers in possibles.items():
+        n *= len(supers)
+    return n
+
+def lookup_optimized(table, binding, terminal, non_terminal):
+    terms = (terminal,)
+    while True:
+        if not terms in table:
+            return False
+        for prod in table[terms]:
+            if prod[0] == non_terminal:
+                return prod
+        if not terms in binding:
+            return False
+        terms = binding[terms]
+
+def non_terminal_table(terminals, terminal_map, binding):
+    table = {}
+    finished = {}
+
+    for terminal in terminals:
+
+        while True:
+            terms = (terminal,)
+
+            if not terms in terminal_map:
+                break
+
+            if terms in finished:
+                break
+
+            # Now follow that to the end of the list of bindings
+
+            while terms in binding and not binding[terms] in finished:
+                terms = binding[terms]
+
+            table[terms] = terminal_map[terms]
+            finished[terms] = True
+
+    for terms, prods in terminal_map.items():
+        for term in terms:
+            ts = (term,)
+            for prod in prods:
+                if not lookup_optimized(table, binding, term, prod[0]):
+                    if not ts in table:
+                        table[ts] = ()
+                    table[ts] += (prod,)
+
+    return table
+
+def prod_size(prod):
+    return len(prod) + 1
+
+def non_terminal_size(table):
+    l = 0
+    for terms, prods in table.items():
+        l += len(prods) + 2
+    return l
+
+def optimize(grammar, parse_table, terminals, non_terminals, output):
+    #
+    # Walk over the parse table
+    # and figure out which non-terminal → production
+    # mappings are shared between terminals
+    #
+
+    non_terminal_map = {}
+
+    for terminal in terminals:
+
+        for non_terminal in non_terminals:
+
+            parse_key = (terminal, non_terminal)
+            if parse_key in parse_table:
+    
+                prod = parse_table[parse_key]
+
+                prod_key = (non_terminal, prod)
+
+                if prod_key not in non_terminal_map:
+                    non_terminal_map[prod_key] = ()
+
+                non_terminal_map[prod_key] = non_terminal_map[prod_key] + (terminal,)
+
+    # Now flip that over to generate a map from a set of terminals to the
+    # non-terminal/productions they match
+
+    terminal_map = {}
+
+    for prod, terms in non_terminal_map.items():
+        if terms not in terminal_map:
+            terminal_map[terms] = ()
+        terminal_map[terms] += (prod,)
+
+    possibles = {}
+
+    # Build possible terminals mappings for each entry in
+    # non_terminal_map. This means, for each set of terminals,
+    # find the list of all supersets
+    
+    for prod_sub, term_sub in non_terminal_map.items():
+        for prod_sup, term_sup in non_terminal_map.items():
+            if term_sub != term_sup and is_subset(term_sub, term_sup):
+                # add this set to the list of possible first bindings
+                if not term_sub in possibles:
+                    possibles[term_sub] = ()
+                if not term_sup in possibles[term_sub]:
+                    possibles[term_sub] = possibles[term_sub] + (term_sup,)
+        
+
+    # Trim possible terminal mappings so that only the smallest subset
+    # along each path is present. This should leave the few entries
+    # for each terminal set which offers real options
+
+    new_possibles = {}
+
+    for sub, sups in possibles.items():
+        new_sups = ()
+        for sup in sups:
+            for check in sups:
+                if sup != check and is_subset(check, sup):
+                    break
+            else:
+                new_sups = new_sups + (sup,)
+        new_possibles[sub] = new_sups
+
+    print_c("/*", file=output)
+    print_c(" * Possible graph edges %d total %d minimal" %
+            (total_bindings(possibles),
+             total_bindings(new_possibles)),
+            file=output)
+    if False:
+        print_c(" *", file=output)
+        for terms in possibles:
+            print_c(" *", file=output)
+            print_c(" * all mappings for %s" % (terms,), file=output)
+            for poss in possibles[terms]:
+                print_c(" * %r -> %r" % (terms, poss), file=output)
+            print_c(" *", file=output)
+            print_c(" * minimal mappings for %s" % (terms,), file=output)
+            for poss in new_possibles[terms]:
+                print_c(" * %r -> %r" % (terms, poss), file=output)
+            print_c(" *", file=output)
+
+    print_c(" */", file=output)
+
+    possibles = new_possibles
+
+    # Select a binding using the heuristic that binding to smaller
+    # supersets will be better than larger supersets.  An exhaustive
+    # search is 'too expensive' at this point.
+
+    binding_map = {}
+
+    for terms in possibles:
+        binding_map[terms] = 0
+
+    for terms in possibles:
+        best_i = 0
+        best_len = -1
+        possible_len = len(possibles[terms])
+
+        # If we have a choice of binding for this
+        # set of terminals, select the one with
+        # the smallest superset
+
+        if possible_len > 1:
+            for i in range(len(possibles[terms])):
+
+                super = possibles[terms][i]
+
+                # Heuristic - select smaller superset
+            
+                l = len(super)
+                if best_len == -1 or l < best_len:
+                    best_i = i
+                    best_len = l
+
+        binding_map[terms] = best_i
+
+    # Construct the final binding and non-terminal table
+
+    best_binding_simple = pick_binding_simple(possibles, binding_map)
+    best_table_simple = non_terminal_table(terminals, terminal_map, best_binding_simple)
+    best_len_simple = non_terminal_size(best_table_simple)
+
+    return (best_binding_simple, best_table_simple)
 
 def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     output=file
@@ -863,61 +1092,10 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
 
     prod_round = 1 << prod_shift
 
-    # Compute total size of non-terminal table to know what padding we'll need
-
-    total_non_terminal_table = len(parse_table)
-
-    non_terminal_shift = 0
-    while 1 << (8 + non_terminal_shift) < total_non_terminal_table:
-        non_terminal_shift += 1
-
-    non_terminal_round = 1 << non_terminal_shift
-
     print_c("#ifndef PARSE_TABLE_DECLARATION", file=output)
     print_c("#define PARSE_TABLE_DECLARATION(n) n", file=output)
     print_c("#endif", file=output)
 
-    #
-    # Generate bitmap of null productions
-    #
-    
-    print_c("#define PARSE_NULL_ID(term,nonterm) (((term) - 1) + ((nonterm) - FIRST_NON_TERMINAL) * (FIRST_NON_TERMINAL-1))",
-            file=output)
-    print_c("#define PARSE_NULL_BYTE(term,nonterm) (PARSE_NULL_ID(term,nonterm) >> 3)", file=output)
-    print_c("#define PARSE_NULL_BIT(term,nonterm) (PARSE_NULL_ID(term,nonterm) & 7)", file=output)
-    print_c("#define match_null(term,nonterm) ((PARSE_TABLE_FETCH_INDEX(&null_table[PARSE_NULL_BYTE(term,nonterm)]) >> PARSE_NULL_BIT(term,nonterm)) & 1)", file=output)
-
-    total_null_bytes = (num_terminals * num_non_terminals + 7) // 8
-    print_c("static const uint8_t PARSE_TABLE_DECLARATION(null_table)[%d] = {" %
-            total_null_bytes, file=output);
-
-    byte = 0
-    shift = 0
-    byte_seen = False
-
-    for non_terminal in non_terminals:
-        for terminal in terminals:
-            key = (terminal, non_terminal)
-            if key in parse_table and len(parse_table[key]) == 0:
-                if not byte_seen:
-                    print_c("    [%d] =" % byte, file=output)
-                    byte_seen = True
-                print_c("        (1 << %d) | /* %s %s */" %
-                        (shift, terminal, non_terminal),
-                        file = output)
-            shift += 1
-            if shift == 8:
-                if byte_seen:
-                    print_c("        0,", file=output)
-                    byte_seen = False
-                shift = 0
-                byte += 1
-
-    if shift != 0:
-        if byte_seen:
-            print_c("    0", file=output)
-    print_c("};", file=output)
-                    
     #
     # Dump production table.
     #
@@ -933,12 +1111,28 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     # table can be stored in a single byte.
     #
 
+    print_c("/*", file=output);
+    print_c(" * Parse table", file=output);
+    print_c(" *", file=output);
+    for key in parse_table:
+        terminal = key[0]
+        non_terminal = key[1]
+        print_c(" * %-12s, %-12s" % (terminal, non_terminal), end='', file=output)
+        prod = parse_table[key]
+        if not prod:
+            print_c("()", end='', file=output)
+        for token in prod:
+            name = token
+            if is_action(token):
+                name = action_name(token_value, token)
+            print_c(" %s," % name, end='', file=output)
+        print_c("", file=output)
+    print_c(" */", file=output)
+
     print_c("static const token_t PARSE_TABLE_DECLARATION(production_table)[] = {", file=output);
 
     prod_index = 0
     for key in parse_table:
-        if len(parse_table[key]) == 0:
-            continue
         prod = parse_table[key] + (key[1],)
         if prod not in prod_map:
             prod_map[prod] = prod_index
@@ -968,8 +1162,21 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("typedef %s token_key_t;" % token_key_type, file=output)
 
     print_c("#define production_index(i) ((i) << %d)" % prod_shift, file=output)
-    print_c("#define non_terminal_index(i) ((i) << %d)" % non_terminal_shift, file=output)
     print_c("typedef struct { token_t token; uint8_t index; } __attribute__((packed)) parse_table_t;", file=output)
+
+    best_binding, best_table = optimize(grammar, parse_table, terminals, non_terminals, output)
+
+    best_len = non_terminal_size(best_table)
+
+    best_shift = 0
+    while ((256 - 2) << best_shift) < best_len:
+        best_shift += 1
+
+    best_round = 1 << best_shift
+
+    print_c("#define non_terminal_index(i) ((i) << %d)" % best_shift, file=output)
+
+    print_c("static const uint8_t PARSE_TABLE_DECLARATION(non_terminal_table)[] = {", file=output)
 
     #
     # Dump the table mapping non-terminals to productions
@@ -978,45 +1185,56 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     # the entries need not include the terminal value as well
     #
 
-    print_c("static const uint8_t PARSE_TABLE_DECLARATION(non_terminal_table)[] = {", file=output)
-
-    terminal_index = 0
-    terminal_indices = {}
-    for terminal in terminals:
-        terminal_indices[terminal] = terminal_index
+    best_indices = {}
+    best_index = 0
+    
+    for terms, prods in best_table.items():
+        best_indices[terms] = best_index
 
         # Add a comment marking the start of the table
-        # entries for this terminal
-        
-        print_c("    /* %s %d */" %
-                (terminal_name(terminal),
-                 terminal_index),
+        # entries for this terminal set
+
+        print_c("    /* %d: (%s) */" %
+                (best_index, terminal_names(terms)),
                 file=output)
 
-        for non_terminal in non_terminals:
-            key = (terminal, non_terminal)
-            if key in parse_table:
-                if len(parse_table[key]) == 0:
-                    continue
-                prod = parse_table[key] + (key[1],)
-                print_c("    %d, /* %s */" %
-                        (prod_map[prod] >> prod_shift,
-                         non_terminal_name(non_terminal)),
-                        file=output)
-                terminal_index += 1
-
-        #
-        # Pad the table so that it can be
-        # indexed by an 8-bit value shifted by a constant
+        # Dump out production table indices
         #
 
-        p = pad(terminal_index, non_terminal_round)
+        for prod_ent in prods:
+            non_terminal, prod = prod_ent
+            key = prod + (non_terminal,)
+            print_c("        %3d,     /* %18s:" %
+                    (prod_map[key] >> prod_shift,
+                     non_terminal),
+                    end='', file=output)
+            for t in prod:
+                name = t
+                if is_action(t):
+                    name = action_name(token_value, t)
+                print_c(" %s" % name, end='', file=output)
+            print_c(" */", file=output)
+            best_index += 1
+        
+        if terms in best_binding:
+            next_terms = best_binding[terms]
+            print_c("      0xfe, %3d, /* %s */" %
+                    (best_indices[next_terms] >> best_shift,
+                     terminal_names(next_terms)),
+                    file=output)
+            best_index += 2
+        else:
+            print_c("      0xff,", file=output)
+            best_index += 1
+
+        p = pad(best_index, best_round)
         for i in range(p):
             print_c("    0xff,", file=output)
-            terminal_index += 1
+            best_index += 1
+        print_c("", file=output)
 
     print_c("};", file=output)
-    print_c("#define NON_TERMINAL_SIZE %d" % terminal_index, file=output)
+    print_c("#define NON_TERMINAL_SIZE %d" % best_index, file=output)
 
     #
     # Dump the table mapping each terminal to a set of
@@ -1029,12 +1247,14 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("static const parse_table_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
 
     for terminal in terminals:
-        print_c("    { %s, %d }," %
-                (terminal_name(terminal),
-                 terminal_indices[terminal] >> non_terminal_shift),
-                file=output)
+        terms = (terminal,)
+        if terms in best_indices:
+            print_c("    { %s, %d }," %
+                    (terminal_name(terminal),
+                     best_indices[terms] >> best_shift),
+                    file=output)
 
-    print_c("    { TOKEN_NONE, %d }," % (terminal_index >> non_terminal_shift), file=output)
+    print_c("    { TOKEN_NONE, %d }," % (best_index >> best_shift), file=output)
     print_c("};", file=output);
     print_c("#endif /* GRAMMAR_TABLE */", file=output)
     print_c("", file=output)
