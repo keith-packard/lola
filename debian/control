@@ -7,7 +7,7 @@ Build-Depends: debhelper (>= 11), python3
 Standards-Version: 4.2.1
 
 Package: lola
-Architecture: any
+Architecture: all
 Depends: python3
 Description: LL parser generator
  Lola is a general-purpose LL parser generator that converts a grammar
