@@ -18,10 +18,11 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 
-import sys
 import argparse
-import re
+import collections
 import pprint
+import re
+import sys
 
 actions_marker = "@@ACTIONS@@"
 
@@ -861,7 +862,7 @@ def lookup_optimized(table, binding, terminal, non_terminal):
         terms = binding[terms]
 
 def non_terminal_table(terminals, terminal_map, binding):
-    table = {}
+    table = collections.OrderedDict()
     finished = {}
 
     for terminal in terminals:

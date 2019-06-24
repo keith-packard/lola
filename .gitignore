@@ -1,6 +1,9 @@
 pycalc_gram.py
 calc-gram.h
 *.o
+**/*.dSYM
+**/__pycache/
+**/*.pyc
 lola
 pycalc
 calc
