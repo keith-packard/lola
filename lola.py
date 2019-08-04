@@ -130,7 +130,7 @@ typedef enum {
     parse_return_end,
     parse_return_oom,
     parse_return_error,
-} parse_return_t;
+} __attribute__((packed)) parse_return_t;
 
 static parse_return_t
 parse(void *lex_context)
