@@ -1,3 +1,15 @@
+lola (1.2-1) unstable; urgency=medium
+
+  * Upstream 1.2 version
+  * Use /usr/bin/env to locate python3 binary
+    (Paulo Henrique Silva <ph.silva@gmail.com>)
+  * Make non_terminal_table an ordered dict
+    (Paulo Henrique Silva <ph.silva@gmail.com>)
+  * Pack parse_return_t enum to reduce space used
+  * Add preprocessing functionality
+
+ -- Keith Packard <keithp@keithp.com>  Wed, 21 Aug 2019 21:10:52 -0700
+
 lola (1.1-2) unstable; urgency=medium
 
   * Clean up some lintian warnings
