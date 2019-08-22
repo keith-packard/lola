@@ -653,11 +653,57 @@ def mark_action_line(action, line):
     global action_lines
     action_lines[action] = line
 
+ppsyms = {}
+
+def lex_sym(c):
+    v = c
+    while True:
+        c = getc()
+        if is_symbol_cont(c):
+            v += c
+        else:
+            ungetc(c)
+            break;
+    return v
+    
+def define_pp(name):
+    ppsyms[name] = True
+
+def defined_pp(name):
+    return name in ppsyms
+
+pp_stack = []
+
+def include_pp():
+    global pp_stack
+    return len(pp_stack) == 0 or pp_stack[-1]
+
+def push_pp():
+    global pp_stack
+    name = lex_sym(getc())
+    print("push_pp %s defined %r" % (name, defined_pp(name)))
+    pp_stack += [include_pp() and defined_pp(name)]
+
+def pop_pp():
+    global pp_stack
+    if len(pp_stack):
+        pp_stack = pp_stack[:-1]
+
 def lex():
     global lex_value
     lex_value = False
     while True:
         c = getc()
+
+        if c == '{':
+            push_pp()
+            continue
+        if c == '}':
+            pop_pp()
+            continue
+        if not include_pp():
+            continue
+
         if c == '':
             return 'END'
         if c == '|':
@@ -683,15 +729,7 @@ def lex():
             mark_action_line(v, at_line)
             return "SYMBOL"
         if is_symbol_start(c):
-            v = c
-            while True:
-                c = getc()
-                if is_symbol_cont(c):
-                    v += c
-                else:
-                    ungetc(c)
-                    break;
-            lex_value = v
+            lex_value = lex_sym(c)
             return "SYMBOL"
 
 def lola():
@@ -1313,7 +1351,12 @@ def main():
     parser.add_argument("input", help="Grammar input file")
     parser.add_argument("-o", "--output", help="Parser data output file")
     parser.add_argument("-f", "--format", help="Parser output format (c, python)")
+    parser.add_argument("-D", "--define", action='append', help="Define pre-processor symbol")
     args = parser.parse_args()
+    if args.define:
+        for name in args.define:
+            print('defining %s' % name)
+            define_pp(name)
     lex_file = open(args.input, 'r')
     lex_file_name = args.input
     output = sys.stdout
