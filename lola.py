@@ -691,13 +691,12 @@ def include_pp():
 def push_pp():
     global pp_stack
     name = lex_sym(getc())
-    print("push_pp %s defined %r" % (name, defined_pp(name)))
-    pp_stack += [include_pp() and defined_pp(name)]
+    pp_stack.append(include_pp() and defined_pp(name))
 
 def pop_pp():
     global pp_stack
     if len(pp_stack):
-        pp_stack = pp_stack[:-1]
+        pp_stack.pop()
 
 def lex():
     global lex_value
@@ -1365,7 +1364,6 @@ def main():
     args = parser.parse_args()
     if args.define:
         for name in args.define:
-            print('defining %s' % name)
             define_pp(name)
     lex_file = open(args.input, 'r')
     lex_file_name = args.input
