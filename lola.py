@@ -427,15 +427,25 @@ def reset_follow():
     global follow_dictionary
     follow_dictionary = {}
 
+#
+# A list of in-process follow calls
+# Use this to avoid recursing into the same
+# non-terminal
+#
+follow_stack = []
+
+
 def follow(grammar, item, non_terminals):
-    global follow_dictionary
+    global follow_dictionary, follow_stack
     if item in follow_dictionary:
         ret = follow_dictionary[item]
     else:
         ret = ()
+        follow_stack.append(item)
         for non_terminal in non_terminals:
-            if non_terminal != item:
+            if non_terminal not in follow_stack:
                 ret += follow_in_non_terminal(grammar, item, non_terminal, non_terminals)
+        follow_stack.pop()
 
         if is_start_symbol(item):
             ret = (end_token,) + ret
@@ -681,13 +691,12 @@ def include_pp():
 def push_pp():
     global pp_stack
     name = lex_sym(getc())
-    print("push_pp %s defined %r" % (name, defined_pp(name)))
-    pp_stack += [include_pp() and defined_pp(name)]
+    pp_stack.append(include_pp() and defined_pp(name))
 
 def pop_pp():
     global pp_stack
     if len(pp_stack):
-        pp_stack = pp_stack[:-1]
+        pp_stack.pop()
 
 def lex():
     global lex_value
@@ -1355,7 +1364,6 @@ def main():
     args = parser.parse_args()
     if args.define:
         for name in args.define:
-            print('defining %s' % name)
             define_pp(name)
     lex_file = open(args.input, 'r')
     lex_file_name = args.input
