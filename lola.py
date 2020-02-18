@@ -427,15 +427,25 @@ def reset_follow():
     global follow_dictionary
     follow_dictionary = {}
 
+#
+# A list of in-process follow calls
+# Use this to avoid recursing into the same
+# non-terminal
+#
+follow_stack = []
+
+
 def follow(grammar, item, non_terminals):
-    global follow_dictionary
+    global follow_dictionary, follow_stack
     if item in follow_dictionary:
         ret = follow_dictionary[item]
     else:
         ret = ()
+        follow_stack.append(item)
         for non_terminal in non_terminals:
-            if non_terminal != item:
+            if non_terminal not in follow_stack:
                 ret += follow_in_non_terminal(grammar, item, non_terminal, non_terminals)
+        follow_stack.pop()
 
         if is_start_symbol(item):
             ret = (end_token,) + ret
