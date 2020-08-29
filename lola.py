@@ -61,13 +61,9 @@ static const token_t *
 match_state(token_t terminal, token_t non_terminal)
 {
 	token_key_t terminal_key = terminal;
-	token_key_t term;
-	for (term = 0; term < sizeof(terminal_table) / sizeof(terminal_table[0]); term++)
-		if (PARSE_TABLE_FETCH_TOKEN(&terminal_table[term].token) == terminal_key)
-			goto got_term;
-	return NULL;
-got_term:;
-	non_terminal_index_t non_term = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term].index));
+	if (terminal_key >= sizeof(terminal_table) / sizeof(terminal_table[0]))
+		return NULL;
+	non_terminal_index_t non_term = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[terminal_key]));
 	for (;;) {
 		uint8_t i = PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term]);
 		if (i == 0xfe) {
@@ -1210,7 +1206,6 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("typedef %s token_key_t;" % token_key_type, file=output)
 
     print_c("#define production_index(i) ((i) << %d)" % prod_shift, file=output)
-    print_c("typedef struct { token_t token; uint8_t index; } __attribute__((packed)) parse_table_t;", file=output)
 
     best_binding, best_table = optimize(grammar, parse_table, terminals, non_terminals, output)
 
@@ -1292,17 +1287,17 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     # to each terminal.
     #
 
-    print_c("static const parse_table_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
+    print_c("static const uint8_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
 
     for terminal in terminals:
         terms = (terminal,)
         if terms in best_indices:
-            print_c("    { %s, %d }," %
+            print_c("    [%s] = %d," %
                     (terminal_name(terminal),
                      best_indices[terms] >> best_shift),
                     file=output)
 
-    print_c("    { TOKEN_NONE, %d }," % (best_index >> best_shift), file=output)
+    print_c("    [TOKEN_NONE] = %d," % (best_index >> best_shift), file=output)
     print_c("};", file=output);
     print_c("#endif /* GRAMMAR_TABLE */", file=output)
     print_c("", file=output)
