@@ -164,12 +164,12 @@ parse(void *lex_context)
 	{
 	    int i;
 #ifdef token_name
-	    printf("token %s stack %s", token_names[token], token_names[top]);
+	    printf("%-15s : %s", token_names[token], token_names[top]);
 	    for (i = parse_stack_p-1; i >= 0; i--) {
 		if (!is_action(parse_stack[i]))
 		    printf(" %s", token_names[parse_stack[i]]);
 		else
-		    printf(" action %d", parse_stack[i]);
+		    printf(" <%d>", parse_stack[i]);
 	    }
 #else
 	    printf("token %d stack %d", token, top);
