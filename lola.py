@@ -368,12 +368,6 @@ def first(grammar, production):
         first_dictionary[production] = ret
     return ret
 
-def member(item, list):
-    if item in list:
-        return list[list.index(item):]
-    else:
-        return ()
-
 #
 # generate the follow set of a for an item in a particular
 # production which derives a particular non-terminal.
@@ -388,10 +382,15 @@ def member(item, list):
 #
 
 def follow_in_production(grammar, item, non_terminal, production, non_terminals):
-    r = member(item, production)
-    if not r:
-        return ()
-    f = first(grammar, rest(r))
+
+    # Find all instances of the item in this production; it
+    # may be repeated
+
+    f = ()
+    for i in range(len(production)):
+        if production[i] == item:
+            f += first(grammar, production[i+1:])
+
     if () in f:
         f = delete((), f) + follow(grammar, non_terminal, non_terminals)
     return f
