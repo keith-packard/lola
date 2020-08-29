@@ -3,7 +3,7 @@ Section: devel
 Priority: optional
 Maintainer: Keith Packard <keithp@keithp.com>
 Homepage: https://keithp.com
-Build-Depends: debhelper-compat (= 12), python3
+Build-Depends: debhelper-compat (= 13), python3
 Rules-Requires-Root: no
 Standards-Version: 4.5.0
 
