@@ -61,13 +61,9 @@ static const token_t *
 match_state(token_t terminal, token_t non_terminal)
 {
 	token_key_t terminal_key = terminal;
-	token_key_t term;
-	for (term = 0; term < sizeof(terminal_table) / sizeof(terminal_table[0]); term++)
-		if (PARSE_TABLE_FETCH_TOKEN(&terminal_table[term].token) == terminal_key)
-			goto got_term;
-	return NULL;
-got_term:;
-	non_terminal_index_t non_term = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[term].index));
+	if (terminal_key >= sizeof(terminal_table) / sizeof(terminal_table[0]))
+		return NULL;
+	non_terminal_index_t non_term = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[terminal_key]));
 	for (;;) {
 		uint8_t i = PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term]);
 		if (i == 0xfe) {
@@ -168,12 +164,12 @@ parse(void *lex_context)
 	{
 	    int i;
 #ifdef token_name
-	    printf("token %s stack %s", token_names[token], token_names[top]);
+	    printf("%-15s : %s", token_names[token], token_names[top]);
 	    for (i = parse_stack_p-1; i >= 0; i--) {
 		if (!is_action(parse_stack[i]))
 		    printf(" %s", token_names[parse_stack[i]]);
 		else
-		    printf(" action %d", parse_stack[i]);
+		    printf(" <%d>", parse_stack[i]);
 	    }
 #else
 	    printf("token %d stack %d", token, top);
@@ -372,12 +368,6 @@ def first(grammar, production):
         first_dictionary[production] = ret
     return ret
 
-def member(item, list):
-    if item in list:
-        return list[list.index(item):]
-    else:
-        return ()
-
 #
 # generate the follow set of a for an item in a particular
 # production which derives a particular non-terminal.
@@ -392,10 +382,15 @@ def member(item, list):
 #
 
 def follow_in_production(grammar, item, non_terminal, production, non_terminals):
-    r = member(item, production)
-    if not r:
-        return ()
-    f = first(grammar, rest(r))
+
+    # Find all instances of the item in this production; it
+    # may be repeated
+
+    f = ()
+    for i in range(len(production)):
+        if production[i] == item:
+            f += first(grammar, production[i+1:])
+
     if () in f:
         f = delete((), f) + follow(grammar, non_terminal, non_terminals)
     return f
@@ -544,8 +539,8 @@ def compress_action(action):
     action = re.sub("/\*.*?\*/", " ", action)
     # compress whitespace
     action = re.sub("\s+", " ", action)
-    # remove leading and trailing whitespace
-    action = action.strip('@ \t\n')
+    # remove leading and trailing whitespace and braces
+    action = action.strip('@ \t\n{}')
     return action
 
 def has_action(actions, action):
@@ -1210,7 +1205,6 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("typedef %s token_key_t;" % token_key_type, file=output)
 
     print_c("#define production_index(i) ((i) << %d)" % prod_shift, file=output)
-    print_c("typedef struct { token_t token; uint8_t index; } __attribute__((packed)) parse_table_t;", file=output)
 
     best_binding, best_table = optimize(grammar, parse_table, terminals, non_terminals, output)
 
@@ -1292,17 +1286,17 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     # to each terminal.
     #
 
-    print_c("static const parse_table_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
+    print_c("static const uint8_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
 
     for terminal in terminals:
         terms = (terminal,)
         if terms in best_indices:
-            print_c("    { %s, %d }," %
+            print_c("    [%s] = %d," %
                     (terminal_name(terminal),
                      best_indices[terms] >> best_shift),
                     file=output)
 
-    print_c("    { TOKEN_NONE, %d }," % (best_index >> best_shift), file=output)
+    print_c("    [TOKEN_NONE] = %d," % (best_index >> best_shift), file=output)
     print_c("};", file=output);
     print_c("#endif /* GRAMMAR_TABLE */", file=output)
     print_c("", file=output)
