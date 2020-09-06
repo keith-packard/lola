@@ -1,0 +1,21 @@
+start	: e
+			@print(values[0])@
+	;
+e	: e PLUS t
+			@value = values[0] + values[2]@
+	| e MINUS t
+			@value = values[0] - values[2]@
+	| t
+	;
+t	: t TIMES f
+			@value = values[0] * values[2]@
+	| t DIVIDE f
+			@value = values[0] / values[2]@
+	| f
+	;
+f	: OP e CP
+			@value = values[1]@
+	| MINUS NUMBER
+			@value = -values[1]@
+	| NUMBER
+	;

@@ -50,3 +50,6 @@ install: lola lola.1
 
 clean:
 	rm -f lola calc pycalc calc-gram.h pycalc_gram.py
+
+calc-slr-bits.py:
+	./slurp < calc.slr > $@

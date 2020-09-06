@@ -1,0 +1,22 @@
+start		: non-terms
+		;
+non-terms	: non-terms non-term					@value = values[0] + values[1]@
+		|							@value = ()@
+		;
+non-term	: SYMBOL COLON rules SEMI
+			@
+				value = ()
+				for rule in values[2]:
+					prod = (values[0],) + rule
+					value = value + (prod,)
+			@
+		;
+rules		: rules VBAR rule					@value = values[0] + (values[2],)@
+		| rule							@value = (values[0])@
+		;
+rule		: symbols ACTION					@value = (values[0], values[1])@
+		| symbols						@value = (values[0], None)@
+		;
+symbols		: symbols SYMBOL					@value = values[0] + (values[1],)@
+		|							@value = ()@
+		;

@@ -1,4 +1,4 @@
-# Lola — an LL parser table generator
+# Lola and Slurp — parser generators
 
 Lola is a parser generator along the lines of yacc or bison, but
 instead of handling LALR grammars, it only supports LL grammars. This
@@ -8,6 +8,9 @@ is only suitable if the target language is actually LL.
 Lola was originally written over thirty years ago in a long-lost
 dialect of lisp called Kalypso. I've transliterated it into python,
 but I haven't tried to make it look like reasonable code.
+
+Slurp is another parser generator handling SLR grammars. Those are
+also a subset of LALR, but larger than LL.
 
 ## Input Syntax
 
@@ -43,7 +46,15 @@ is to let you use lola with any language by creating a new parser
 framework and inserting the actions as appropriate. Each parser can do
 whatever is appropriate with the contents of the actions.
 
-## Parser Operation
+Lola leaves the actions in the resulting parse data; the parser can
+see them appear on the parse stack; when it pops them is the right
+time to perform the action.
+
+Slurp actions are designed to be executed at reduce time, and so they
+can only be associated with a whole production. Actions occuring in
+the middle of a production are not valid and will be rejected.
+
+## Lola Parser Operation
 
 The generated parse tables map a (terminal, non-terminal) pair into
 one of the productions in the grammar. The parser has two pieces of
@@ -73,18 +84,18 @@ Note that 'actions' are executed *before* a token is read from
 input. This allows them to operate on the just-matched input token
 value, and also at end-of-file.
 
-## C Framework
+## Lola C Framework
 
 The current C output code generates a header file that defines the
 tokens, specifies a parser that includes the actions as case elements
 of a switch statement. All of this is generated in a single C header
 file, which makes incorporating it into build system straightforward.
 
-### The Generated C Header
+### The Lola Generated C Header
 
-The header file has four parts. Each part is protected by #ifdefs, so
-this single header file can be used multiple times, extracting the
-desired information by selecting the desired bits.
+The Lola generated header file has four parts. Each part is protected
+by #ifdefs, so this single header file can be used multiple times,
+extracting the desired information by selecting the desired bits.
 
  1) An enum containing all of the tokens used in the grammar,
     terminals non-terminals and actions. This is to be used by the

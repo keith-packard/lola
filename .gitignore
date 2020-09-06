@@ -7,3 +7,4 @@ calc-gram.h
 lola
 pycalc
 calc
+calc-slr-bits.py

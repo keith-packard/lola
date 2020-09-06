@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 import sys
 
-def dump_grammar(grammar, file=sys.stdout):
+def dump_grammar(grammar, actions=None, file=sys.stdout):
     prev_non_term = False
     for p in range(len(grammar)):
         prod = grammar[p]
@@ -15,6 +15,8 @@ def dump_grammar(grammar, file=sys.stdout):
             print("%2d: %s | " % (p, " " * 16,), end='', file=file)
         for token in prod[1:]:
             print(" %s" % token, end='', file=file)
+        if actions and actions[p]:
+            print(" @%s@" % actions[p], end='')
         print("", file=file)
     if prev_non_term:
         print("%s ;" % (" " * 20,), file=file)
@@ -105,7 +107,6 @@ def first_for_symbol(grammar, symbol):
         ret = [symbol,]
     elif is_non_terminal(symbol):
         set = first_set(grammar, symbol)
-        print("first set for %s is %r" % (symbol, set))
         ret = unique(set)
 
     return ret
@@ -150,17 +151,18 @@ def debug_out():
     global debug_indent
     debug_indent -= 1
 
+show_debug = False
+
 def debug(s):
-    global debug_indent
-    print("    " * debug_indent, end='')
-    print(s)
+    global debug_indent, show_debug
+    if show_debug:
+        print("    " * debug_indent, end='')
+        print(s)
 
 def first(grammar, production):
     global first_dictionary
 
     debug_in()
-    while production and is_action(production[0]):
-        production = production[1:]
 
     if production in first_dictionary:
         ret = first_dictionary[production]
@@ -261,7 +263,7 @@ def follow(grammar, non_terminal):
     debug_out()
     return ret
 
-def parse(table, grammar, lex, action):
+def parse(table, lex, action):
     a = lex()
     lex_value = None
     if type(a) is tuple:
@@ -270,12 +272,15 @@ def parse(table, grammar, lex, action):
     stack = [0]
     value_stack = []
     while True:
-        print("\t\t%-10.10s %r %r" % (a, stack, value_stack))
+        debug("\t\t%-10.10s %r %r" % (a, stack, value_stack))
         s = stack[-1]
+        if a not in table[s]:
+            print("Syntax error")
+            return False
         act = table[s][a]
-#        print("\taction %r" % (act,))
+        debug("\taction %r" % (act,))
         if act[0] == 'shift':
-            print("shift %d" % act[1])
+            debug("shift %d" % act[1])
             stack.append(act[1])
             value_stack.append(lex_value)
             a = lex()
@@ -284,22 +289,17 @@ def parse(table, grammar, lex, action):
                 lex_value = a[1]
                 a = a[0]
         elif act[0] == 'reduce':
-            production = grammar[act[1]]
-            non_terminal = production[0]
-            handle = production[1:];
-            print("reduce %-10.10s -> %s" % (non_terminal, handle))
+            debug("reduce %s %d %d" % (act[1], act[2], act[3]))
+            non_terminal = act[1]
             action_values = []
-            for b in handle:
+            for b in range(act[3]):
                 stack.pop()
                 action_values = [value_stack.pop()] + action_values
-            value_stack.append(action(grammar, act[1], action_values))
+            value_stack.append(action(act[2], action_values))
             t = stack[-1]
             stack.append(table[t][non_terminal])
         elif act[0] == 'accept':
-            return (action(grammar, 0, [value_stack.pop()]))
-        else:
-            print("syntax error")
-            return False
+            return (action(0, [value_stack.pop()]))
     return True
 
 def closure(grammar, I):
@@ -513,11 +513,35 @@ def print_table(grammar, T):
             if n in S:
                 print("     %-10.10s : %r," % (n, S[n]))
 
+def print_table_python(grammar, T, file=sys.stdout):
+    nons = non_terminals(grammar)
+    terms = terminals(grammar)
+    print("table = (", file=file)
+    for s in range(len(T)):
+        print("# State %d" % s, file=file)
+        print("    {", file=file)
+        S = T[s]
+        labeled = False
+        for t in terms:
+            if t in S:
+                if not labeled:
+                    print("     # Action", file=file)
+                    labeled = True
+                label = '"%s"' % t
+                print("     %-10.10s : %r," % (label, S[t]), file=file)
+        labeled = False
+        for n in nons:
+            if n in S:
+                if not labeled:
+                    print("     # Goto", file=file)
+                    labeled = True
+                label = '"%s"' % n
+                print("     %-10.10s : %r," % (label, S[n]), file=file)
+        print("    },", file=file)
+    print(")", file=file)
+
 def slr(grammar):
     C = items(grammar)
-    print("States")
-    dump_states(grammar, C)
-    print("---------")
     table = []
     N = non_terminals(grammar)
     for n in N:
@@ -545,7 +569,7 @@ def slr(grammar):
                     j = item[0]
                     f = follow(grammar, non_terminal)
                     for a in f:
-                        actions[a] = ('reduce', j)
+                        actions[a] = ('reduce', grammar[j][0], j, len(grammar[j]) - 1)
         for n in N:
             j = goto_state(grammar, C, c, n)
             if j is not None:
@@ -553,7 +577,6 @@ def slr(grammar):
         debug_out()
         debug("Actions state %d = %r" % (c, actions))
         table.append(actions)
-    print_table(grammar, table)
     return table
             
 # Convert grammar from dict form to list form
@@ -569,16 +592,31 @@ def dform_to_lform(dform):
 
 value_stack = []
 
-def action(grammar, production, values):
-    print("action on production %d: %r %r" % (production, grammar[production], values))
+def extract_productions(grammar_action):
+    grammar = ()
+    for pa in grammar_action:
+        grammar = grammar + (pa[0],)
+    return grammar
+
+def extract_actions(grammar_action):
+    actions = ()
+    for pa in grammar_action:
+        actions = actions + (pa[1],)
+    return actions
+
+def action(production, values):
     value = None
+    debug("Action %d %r" % (production, values))
     if len(values):
         value = values[0]
-    if production == 8:
+    if production == 9:
         value = ()
-    elif production == 7:
+    elif production == 8:
         value = values[0] + (values[1],)
-        print("symbols now %r" % (value,))
+    elif production == 7:
+        value = (values[0], None)
+    elif production == 6:
+        value = (values[0], values[1])
     elif production == 5:
         value = (values[0],)
     elif production == 4:
@@ -586,16 +624,19 @@ def action(grammar, production, values):
     elif production == 3:
         non_terminal = values[0]
         rules = values[2]
-        print("non-terminal %s rules %r" % (non_terminal, rules))
         productions = []
         for rule in rules:
-            productions.append((non_terminal,) + rule)
+            symbols = rule[0]
+            action = rule[1]
+            productions.append((((non_terminal,) + symbols), action))
         value = tuple(productions)
     elif production == 2:
         value = ()
     elif production == 1:
         value = values[0] + values[1]
-    print("\tresult %r" % (value,))
+    elif production == 0:
+        value = (extract_productions(values[0]), extract_actions(values[0]))
+    debug("\tresult %r" % (value,))
     return value
 
 lex_c = False
@@ -703,7 +744,7 @@ def lex():
         if c == ';':
             return "SEMI"
         if c == '@':
-            v = c
+            v = ''
             at_line = lex_line
             while True:
                 c = getc()
@@ -717,10 +758,10 @@ def lex():
                 v += c
             lex_value = v
             mark_action_line(v, at_line)
-            return ("SYMBOL", v)
+            return ("ACTION", v)
         if is_symbol_start(c):
             v = lex_sym(c)
-            print("symbol %s" % v)
+            debug("symbol %s" % v)
             return ("SYMBOL", v)
 
 l_grammar = (
@@ -731,23 +772,22 @@ l_grammar = (
 #2
     ("non-terms" , ),
 #3
-    ("non-term"  , "symbol", "COLON", "rules", "SEMI",),
+    ("non-term"  , "SYMBOL", "COLON", "rules", "SEMI",),
 #4
     ("rules"     , "rules", "VBAR", "rule",),
 #5
     ("rules"     , "rule",),
 #6
-    ("rule"      , "symbols",),
+    ("rule"      , "symbols", "ACTION",),
 #7
-    ("symbols"   , "symbols", "symbol",),
+    ("rule"      , "symbols",),
 #8
-    ("symbols"   , ),
+    ("symbols"   , "symbols", "SYMBOL",),
 #9
-    ("symbol"    , "SYMBOL",),
+    ("symbols"   , ),
     )
 
-def calc_action(grammar, production, values):
-    print("action on production %d: %r %r" % (production, grammar[production], values))
+def calc_action(production, values):
     value = None
     if len(values):
         value = values[0]
@@ -829,10 +869,39 @@ def calc_lex():
 
 #parse(calc_table, calc_grammar, calc_lex, calc_action)
 
-dump_grammar(l_grammar)
+#dump_grammar(l_grammar)
 
 l_table = slr(l_grammar)
 
-new_grammar = parse(l_table, l_grammar, lex, action)
+# print_table_python(l_grammar, l_table)
 
-dump_grammar(new_grammar)
+new_action_grammar = parse(l_table, lex, action)
+
+def print_actions_python(actions, file=sys.stdout):
+    print("def action(production, values):", file=file)
+    print("    value = None", file=file)
+    print("    if len(values):", file=file)
+    print("        value = values[0]", file=file)
+    first = True
+    for p in range(len(actions)):
+        if not actions[p]:
+            continue
+        if first:
+            print("    if", end='', file=file)
+            first = False
+        else:
+            print("    elif", end='', file=file)
+        print(" production == %d:" % p, file=file)
+        print("        %s" % actions[p], file=file)
+    print("    return value", file=file)
+    print("")
+    print("")
+
+if new_action_grammar:
+    new_grammar = new_action_grammar[0]
+    new_actions = new_action_grammar[1]
+#    dump_grammar(new_grammar, actions=new_actions)
+    action_table = slr(new_grammar)
+    if action_table:
+          print_actions_python(new_actions)
+          print_table_python(new_grammar, action_table)
