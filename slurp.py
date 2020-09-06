@@ -1,55 +1,6 @@
 #!/usr/bin/python3
 import sys
 
-lex_c = False
-
-def getc():
-    global lex_c
-    if lex_c:
-        c = lex_c
-        lex_c = False
-    else:
-        c = sys.stdin.read(1)
-    return c
-
-def ungetc(c):
-    global lex_c
-    lex_c = c
-
-lex_value = False
-
-def lex():
-    global lex_value
-    while True:
-        c = getc()
-        if c == '':
-            sys.exit(0)
-        if c == '+':
-            return "PLUS"
-        if c == '-':
-            return "MINUS"
-        if c == '*':
-            return "TIMES"
-        if c == '/':
-            return "DIVIDE"
-        if c == '(':
-            return "OP"
-        if c == ')':
-            return "CP"
-        if c == '\n':
-            return "END"
-        if '0' <= c and c <= '9':
-            v = ord(c) - ord('0')
-            while True:
-                c = getc()
-                if '0' <= c and c <= '9':
-                    v = v * 10 + ord(c) - ord('0')
-                else:
-                    ungetc(c)
-                    break;
-            lex_value = v
-            return "NUMBER"
-
 def dump_grammar(grammar, file=sys.stdout):
     prev_non_term = False
     for p in range(len(grammar)):
@@ -123,7 +74,7 @@ def first_set(grammar, non_terminal):
             if is_null_production(prod):
                 ret.append(())
             else:
-                ret += first(grammar, prod)
+                ret += first(grammar, prod[1:])
     return ret
 
 def unique(list):
@@ -310,69 +261,45 @@ def follow(grammar, non_terminal):
     debug_out()
     return ret
 
-
-grammar = (
-# 0
-    ("start", "e",),
-# 1
-    ("e", "e", "PLUS", "t",),
-# 2
-    ("e", "t",),
-# 3
-    ("t", "t", "TIMES", "f",),
-# 4
-    ("t", "f",),
-# 5
-    ("f", "OP", "e", "CP",),
-# 6
-    ("f", "NUMBER",),
-    )
-
-
-value_stack = []
-
-def action(production):
-    if production == 6:
-        value_stack.append(lex_value)
-    elif production == 3:
-        a = value_stack.pop()
-        b = value_stack.pop()
-        value_stack.append(b * a)
-    elif production == 1:
-        a = value_stack.pop()
-        b = value_stack.pop()
-        value_stack.append(b + a)
-    elif production == 0:
-        a = value_stack.pop()
-        print("Value: %r" % (a,))
-
-def parse(table):
+def parse(table, grammar, lex, action):
     a = lex()
+    lex_value = None
+    if type(a) is tuple:
+        lex_value = a[1]
+        a = a[0]
     stack = [0]
+    value_stack = []
     while True:
-        print("\t\t%-10.10s %r" % (a, stack))
+        print("\t\t%-10.10s %r %r" % (a, stack, value_stack))
         s = stack[-1]
         act = table[s][a]
 #        print("\taction %r" % (act,))
         if act[0] == 'shift':
+            print("shift %d" % act[1])
             stack.append(act[1])
+            value_stack.append(lex_value)
             a = lex()
+            lex_value = None
+            if type(a) is tuple:
+                lex_value = a[1]
+                a = a[0]
         elif act[0] == 'reduce':
             production = grammar[act[1]]
-            action(act[1])
             non_terminal = production[0]
             handle = production[1:];
-            print("%-5.5s -> %s" % (non_terminal, handle))
+            print("reduce %-10.10s -> %s" % (non_terminal, handle))
+            action_values = []
             for b in handle:
                 stack.pop()
+                action_values = [value_stack.pop()] + action_values
+            value_stack.append(action(grammar, act[1], action_values))
             t = stack[-1]
             stack.append(table[t][non_terminal])
         elif act[0] == 'accept':
-            action(0)
-            break
+            return (action(grammar, 0, [value_stack.pop()]))
         else:
             print("syntax error")
-            break
+            return False
     return True
 
 def closure(grammar, I):
@@ -629,9 +556,283 @@ def slr(grammar):
     print_table(grammar, table)
     return table
             
-dump_grammar(grammar)
+# Convert grammar from dict form to list form
 
-new_table = slr(grammar)
+def dform_to_lform(dform):
+    lform = []
+    for non_terminal in dform:
+        productions = dform[non_terminal]
+        for production in productions:
+            print("non_terminal %s production %r" % (non_terminal, production))
+            lform.append((non_terminal,) + production)
+    return lform
 
-while parse(new_table):
-    pass
+value_stack = []
+
+def action(grammar, production, values):
+    print("action on production %d: %r %r" % (production, grammar[production], values))
+    value = None
+    if len(values):
+        value = values[0]
+    if production == 8:
+        value = ()
+    elif production == 7:
+        value = values[0] + (values[1],)
+        print("symbols now %r" % (value,))
+    elif production == 5:
+        value = (values[0],)
+    elif production == 4:
+        value = values[0] + (values[2],)
+    elif production == 3:
+        non_terminal = values[0]
+        rules = values[2]
+        print("non-terminal %s rules %r" % (non_terminal, rules))
+        productions = []
+        for rule in rules:
+            productions.append((non_terminal,) + rule)
+        value = tuple(productions)
+    elif production == 2:
+        value = ()
+    elif production == 1:
+        value = values[0] + values[1]
+    print("\tresult %r" % (value,))
+    return value
+
+lex_c = False
+
+lex_file = sys.stdin
+lex_file_name = "<stdin>"
+
+lex_line = 1
+
+def onec():
+    global lex_line
+    global lex_file
+    c = lex_file.read(1)
+    if c == '\n':
+        lex_line = lex_line + 1
+    return c
+
+def getc():
+    global lex_c
+    if lex_c:
+        c = lex_c
+        lex_c = False
+    else:
+        c = onec()
+        if c == '#':
+            while c != '\n':
+                c = onec()
+    return c
+
+def ungetc(c):
+    global lex_c
+    lex_c = c
+
+def is_symbol_start(c):
+    return c.isalpha() or c == '_' or c == '-'
+
+def is_symbol_cont(c):
+    return is_symbol_start(c) or c.isdigit()
+
+action_lines = {}
+
+def action_line(action):
+    global action_lines
+    return action_lines[action]
+
+def mark_action_line(action, line):
+    global action_lines
+    action_lines[action] = line
+
+ppsyms = {}
+
+def lex_sym(c):
+    v = c
+    while True:
+        c = getc()
+        if is_symbol_cont(c):
+            v += c
+        else:
+            ungetc(c)
+            break;
+    return v
+    
+def define_pp(name):
+    ppsyms[name] = True
+
+def defined_pp(name):
+    return name in ppsyms
+
+pp_stack = []
+
+def include_pp():
+    global pp_stack
+    return len(pp_stack) == 0 or pp_stack[-1]
+
+def push_pp():
+    global pp_stack
+    name = lex_sym(getc())
+    pp_stack.append(include_pp() and defined_pp(name))
+
+def pop_pp():
+    global pp_stack
+    if len(pp_stack):
+        pp_stack.pop()
+
+def lex():
+    lex_value = None
+    while True:
+        c = getc()
+
+        if c == '{':
+            push_pp()
+            continue
+        if c == '}':
+            pop_pp()
+            continue
+        if not include_pp():
+            continue
+
+        if c == '':
+            return 'END'
+        if c == '|':
+            return "VBAR"
+        if c == ':':
+            return "COLON"
+        if c == ';':
+            return "SEMI"
+        if c == '@':
+            v = c
+            at_line = lex_line
+            while True:
+                c = getc()
+                if c == '':
+                    error("Missing @, token started at line %d" % at_line)
+                elif c == '@':
+                    c = getc()
+                    if c != '@':
+                        ungetc(c)
+                        break
+                v += c
+            lex_value = v
+            mark_action_line(v, at_line)
+            return ("SYMBOL", v)
+        if is_symbol_start(c):
+            v = lex_sym(c)
+            print("symbol %s" % v)
+            return ("SYMBOL", v)
+
+l_grammar = (
+#0
+    (start_symbol, "non-terms",),
+#1
+    ("non-terms" , "non-terms", "non-term",),
+#2
+    ("non-terms" , ),
+#3
+    ("non-term"  , "symbol", "COLON", "rules", "SEMI",),
+#4
+    ("rules"     , "rules", "VBAR", "rule",),
+#5
+    ("rules"     , "rule",),
+#6
+    ("rule"      , "symbols",),
+#7
+    ("symbols"   , "symbols", "symbol",),
+#8
+    ("symbols"   , ),
+#9
+    ("symbol"    , "SYMBOL",),
+    )
+
+def calc_action(grammar, production, values):
+    print("action on production %d: %r %r" % (production, grammar[production], values))
+    value = None
+    if len(values):
+        value = values[0]
+    if production == 0:
+        print("Result %r" % value)
+    elif production == 1:
+        value = values[0] + values[2]
+    elif production == 3:
+        value = values[0] * values[2]
+    elif production == 5:
+        value = values[1]
+    return value
+
+calc_grammar = (
+# 0
+    ("start", "e",),
+# 1
+    ("e", "e", "PLUS", "t",),
+# 2
+    ("e", "t",),
+# 3
+    ("t", "t", "TIMES", "f",),
+# 4
+    ("t", "f",),
+# 5
+    ("f", "OP", "e", "CP",),
+# 6
+    ("f", "NUMBER",),
+    )
+
+calc_lex_c = False
+
+def calc_getc():
+    global calc_lex_c
+    if calc_lex_c:
+        c = calc_lex_c
+        calc_lex_c = False
+    else:
+        c = sys.stdin.read(1)
+    return c
+
+def calc_ungetc(c):
+    global calc_lex_c
+    calc_lex_c = c
+
+calc_lex_value = False
+
+def calc_lex():
+    while True:
+        c = calc_getc()
+        if c == '':
+            sys.exit(0)
+        if c == '+':
+            return "PLUS"
+        if c == '-':
+            return "MINUS"
+        if c == '*':
+            return "TIMES"
+        if c == '/':
+            return "DIVIDE"
+        if c == '(':
+            return "OP"
+        if c == ')':
+            return "CP"
+        if c == '\n':
+            return "END"
+        if '0' <= c and c <= '9':
+            v = ord(c) - ord('0')
+            while True:
+                c = calc_getc()
+                if '0' <= c and c <= '9':
+                    v = v * 10 + ord(c) - ord('0')
+                else:
+                    calc_ungetc(c)
+                    break;
+            return ("NUMBER", v)
+
+#calc_table = slr(calc_grammar)
+
+#parse(calc_table, calc_grammar, calc_lex, calc_action)
+
+dump_grammar(l_grammar)
+
+l_table = slr(l_grammar)
+
+new_grammar = parse(l_table, l_grammar, lex, action)
+
+dump_grammar(new_grammar)
