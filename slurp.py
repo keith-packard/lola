@@ -1,4 +1,22 @@
 #!/usr/bin/python3
+# coding: utf-8
+#
+# Copyright © 2019 Keith Packard <keithp@keithp.com>
+#
+# This program is free software; you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License along
+# with this program; if not, write to the Free Software Foundation, Inc.,
+# 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
+#
 import sys
 
 def dump_grammar(grammar, actions=None, file=sys.stdout):
@@ -721,7 +739,7 @@ def pop_pp():
     if len(pp_stack):
         pp_stack.pop()
 
-def lex():
+def slr_lex():
     lex_value = None
     while True:
         c = getc()
@@ -764,7 +782,10 @@ def lex():
             debug("symbol %s" % v)
             return ("SYMBOL", v)
 
-l_grammar = (
+#
+# SLR Grammar for SLR language
+#
+slr_grammar = (
 #0
     (start_symbol, "non-terms",),
 #1
@@ -787,96 +808,9 @@ l_grammar = (
     ("symbols"   , ),
     )
 
-def calc_action(production, values):
-    value = None
-    if len(values):
-        value = values[0]
-    if production == 0:
-        print("Result %r" % value)
-    elif production == 1:
-        value = values[0] + values[2]
-    elif production == 3:
-        value = values[0] * values[2]
-    elif production == 5:
-        value = values[1]
-    return value
-
-calc_grammar = (
-# 0
-    ("start", "e",),
-# 1
-    ("e", "e", "PLUS", "t",),
-# 2
-    ("e", "t",),
-# 3
-    ("t", "t", "TIMES", "f",),
-# 4
-    ("t", "f",),
-# 5
-    ("f", "OP", "e", "CP",),
-# 6
-    ("f", "NUMBER",),
-    )
-
-calc_lex_c = False
-
-def calc_getc():
-    global calc_lex_c
-    if calc_lex_c:
-        c = calc_lex_c
-        calc_lex_c = False
-    else:
-        c = sys.stdin.read(1)
-    return c
-
-def calc_ungetc(c):
-    global calc_lex_c
-    calc_lex_c = c
-
-calc_lex_value = False
-
-def calc_lex():
-    while True:
-        c = calc_getc()
-        if c == '':
-            sys.exit(0)
-        if c == '+':
-            return "PLUS"
-        if c == '-':
-            return "MINUS"
-        if c == '*':
-            return "TIMES"
-        if c == '/':
-            return "DIVIDE"
-        if c == '(':
-            return "OP"
-        if c == ')':
-            return "CP"
-        if c == '\n':
-            return "END"
-        if '0' <= c and c <= '9':
-            v = ord(c) - ord('0')
-            while True:
-                c = calc_getc()
-                if '0' <= c and c <= '9':
-                    v = v * 10 + ord(c) - ord('0')
-                else:
-                    calc_ungetc(c)
-                    break;
-            return ("NUMBER", v)
-
-#calc_table = slr(calc_grammar)
-
-#parse(calc_table, calc_grammar, calc_lex, calc_action)
-
-#dump_grammar(l_grammar)
-
-l_table = slr(l_grammar)
-
-# print_table_python(l_grammar, l_table)
-
-new_action_grammar = parse(l_table, lex, action)
-
+#
+# Dump python actions
+#
 def print_actions_python(actions, file=sys.stdout):
     print("def action(production, values):", file=file)
     print("    value = None", file=file)
@@ -897,11 +831,25 @@ def print_actions_python(actions, file=sys.stdout):
     print("")
     print("")
 
-if new_action_grammar:
+def slurp():
+
+    # Create the SLR language parser
+    slr_table = slr(slr_grammar)
+
+    # Read the provide grammar
+    new_action_grammar = parse(slr_table, slr_lex, action)
     new_grammar = new_action_grammar[0]
     new_actions = new_action_grammar[1]
-#    dump_grammar(new_grammar, actions=new_actions)
+
+    # Create SLR parser tables for the provided language
     action_table = slr(new_grammar)
+
+    # Print the results
     if action_table:
-          print_actions_python(new_actions)
-          print_table_python(new_grammar, action_table)
+        print_actions_python(new_actions)
+        print_table_python(new_grammar, action_table)
+
+def main():
+    slurp()
+
+main()

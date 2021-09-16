@@ -18,4 +18,5 @@ f	: OP e CP
 	| MINUS NUMBER
 			@value = -values[1]@
 	| NUMBER
+			@value = values[0]@
 	;

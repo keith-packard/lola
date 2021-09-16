@@ -11,7 +11,7 @@ def debug_out():
     global debug_indent
     debug_indent -= 1
 
-show_debug = False
+show_debug = True
 
 def debug(s):
     global debug_indent, show_debug
@@ -67,16 +67,20 @@ def calc_lex():
             return ("NUMBER", v)
 
 def parse(table, lex, action):
+    stack = []
+    value_stack = []
+
     a = lex()
     lex_value = None
     if type(a) is tuple:
         lex_value = a[1]
         a = a[0]
-    stack = [0]
-    value_stack = []
     while True:
         debug("\t\t%-10.10s %r %r" % (a, stack, value_stack))
-        s = stack[-1]
+        if not stack:
+            s = 0
+        else:
+            s = stack[-1]
         if a not in table[s]:
             print("Syntax error")
             return False
@@ -99,7 +103,11 @@ def parse(table, lex, action):
                 stack.pop()
                 action_values = [value_stack.pop()] + action_values
             value_stack.append(action(act[2], action_values))
-            t = stack[-1]
+            if not stack:
+                t = 0
+            else:
+                t = stack[-1]
+            debug("\tgoto (%r, %r) → %d" % (t, non_terminal, table[t][non_terminal]))
             stack.append(table[t][non_terminal])
         elif act[0] == 'accept':
             return (action(0, [value_stack.pop()]))
