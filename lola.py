@@ -133,6 +133,9 @@ parse(void *lex_context)
 {
     token_t token = TOKEN_NONE;
     int parse_stack_p = 0;
+#ifdef PARSE_TOP
+    PARSE_TOP
+#endif
 
     parse_stack[parse_stack_p++] = NON_TERMINAL_start;
 
