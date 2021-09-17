@@ -1,3 +1,11 @@
+lola (1.5-1) unstable; urgency=medium
+
+  * New upstream version
+  * Standards 4.5.1
+  * Add 'PARSE_TOP' fragment.
+
+ -- Keith Packard <keithp@keithp.com>  Thu, 16 Sep 2021 17:05:14 -0700
+
 lola (1.4-1) unstable; urgency=medium
 
   * New upstream version
