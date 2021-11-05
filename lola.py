@@ -1366,9 +1366,6 @@ def main():
     lex_file_name = args.input
     output = sys.stdout
     outputname = "<stdout>"
-    if args.output:
-        outputname = args.output
-        output = open(args.output, 'w')
     format = 'c'
     if not args.format or args.format == 'c':
         format='c'
@@ -1378,6 +1375,9 @@ def main():
         error("Invalid output format %r" % args.format)
     grammar = lola()
     parse_table = ll(grammar)
+    if args.output:
+        outputname = args.output
+        output = open(args.output, 'w')
     if format == 'c':
         dump_c(grammar, parse_table, file=output, filename=outputname)
     elif format == 'python':
