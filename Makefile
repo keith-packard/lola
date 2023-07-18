@@ -16,14 +16,14 @@
 # 51 Franklin St, Fifth Floor, Boston, MA 02110-1301, USA.
 #
 
-CFLAGS=-g -O2 -I. -Wall -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wnested-externs
+CFLAGS=-g -Os -I. -Wall -Wpointer-arith -Wstrict-prototypes -Wmissing-prototypes -Wmissing-declarations -Wnested-externs
 
 DESTDIR = 
 PREFIX = /usr/local
 BINDIR = $(PREFIX)/bin
 MANDIR = $(PREFIX)/share/man
 
-all: lola calc pycalc
+all: lola calc pycalc json pyjson
 
 lola: lola.py
 	cp lola.py lola
@@ -42,6 +42,19 @@ pycalc: pycalc.py pycalc_gram.py
 pycalc_gram.py: pycalc_gram.ll lola.py
 	python3 ./lola.py -o $@ --format=python pycalc_gram.ll
 
+pyjson: pyjson.py pyjson_gram.py
+	cp pyjson.py $@
+	chmod +x pyjson
+
+pyjson_gram.py: pyjson_gram.ll lola.py
+	python3 ./lola.py -o $@ --format=python pyjson_gram.ll
+
+json: json.c json-gram.h
+	cc $(CFLAGS) -o $@ json.c
+
+json-gram.h: json-gram.ll lola.py
+	python3 ./lola.py -o $@ json-gram.ll
+
 install: lola lola.1
 	install -d $(DESTDIR)$(BINDIR)
 	install lola $(DESTDIR)$(BINDIR)
@@ -49,4 +62,4 @@ install: lola lola.1
 	install lola.1 $(DESTDIR)$(MANDIR)/man1
 
 clean:
-	rm -f lola calc pycalc calc-gram.h pycalc_gram.py
+	rm -f lola calc pycalc calc-gram.h pycalc_gram.py json json-gram.h pyjson_gram.py
