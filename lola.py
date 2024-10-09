@@ -539,9 +539,9 @@ def compress_action(action):
     # trailing comments
     action = re.sub("//.*\n", "\n", action)
     # embedded comments
-    action = re.sub("/\*.*?\*/", " ", action)
+    action = re.sub("/\\*.*?\\*/", " ", action)
     # compress whitespace
-    action = re.sub("\s+", " ", action)
+    action = re.sub("\\s+", " ", action)
     # remove leading and trailing whitespace and braces
     action = action.strip('@ \t\n{}')
     return action
