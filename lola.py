@@ -539,9 +539,9 @@ def compress_action(action):
     # trailing comments
     action = re.sub("//.*\n", "\n", action)
     # embedded comments
-    action = re.sub("/\*.*?\*/", " ", action)
+    action = re.sub("/\\*.*?\\*/", " ", action)
     # compress whitespace
-    action = re.sub("\s+", " ", action)
+    action = re.sub("\\s+", " ", action)
     # remove leading and trailing whitespace and braces
     action = action.strip('@ \t\n{}')
     return action
@@ -1358,6 +1358,7 @@ def main():
     parser.add_argument("-o", "--output", help="Parser data output file")
     parser.add_argument("-f", "--format", help="Parser output format (c, python)")
     parser.add_argument("-D", "--define", action='append', help="Define pre-processor symbol")
+    parser.add_argument("-V", "--version", action='version', version='%(prog)s 1.7')
     args = parser.parse_args()
     if args.define:
         for name in args.define:
