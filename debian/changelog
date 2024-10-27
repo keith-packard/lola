@@ -1,3 +1,11 @@
+lola (1.7-1) unstable; urgency=medium
+
+  * New upstream version
+  * Fix regex warnings
+  * Support --version flag
+
+ -- Keith Packard <keithp@keithp.com>  Sun, 27 Oct 2024 12:39:09 -0700
+
 lola (1.6-1) unstable; urgency=medium
 
   * New upstream version
