@@ -1,3 +1,10 @@
+lola (1.8-1) unstable; urgency=medium
+
+  * New upstream version
+  * Allow targets to redefine what 'const' means.
+
+ -- Keith Packard <keithp@keithp.com>  Wed, 20 Nov 2024 12:58:36 -0800
+
 lola (1.7-1) unstable; urgency=medium
 
   * New upstream version
