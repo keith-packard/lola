@@ -3,13 +3,14 @@ Section: devel
 Priority: optional
 Maintainer: Keith Packard <keithp@keithp.com>
 Homepage: https://keithp.com
-Build-Depends: debhelper-compat (= 13), python3
+Build-Depends: debhelper-compat (= 13), python3:any
 Rules-Requires-Root: no
 Standards-Version: 4.7.0
 
 Package: lola
 Architecture: all
-Depends: python3, ${misc:Depends}
+Depends: python3:any, ${misc:Depends}
+Multi-Arch: foreign
 Description: LL parser generator
  Lola is a general-purpose LL parser generator that converts a grammar
  describing an LL context-free language into either a C or Python program
