@@ -1361,7 +1361,7 @@ def main():
     parser.add_argument("-o", "--output", help="Parser data output file")
     parser.add_argument("-f", "--format", help="Parser output format (c, python)")
     parser.add_argument("-D", "--define", action='append', help="Define pre-processor symbol")
-    parser.add_argument("-V", "--version", action='version', version='%(prog)s 1.7')
+    parser.add_argument("-V", "--version", action='version', version='%(prog)s 1.8')
     args = parser.parse_args()
     if args.define:
         for name in args.define:
