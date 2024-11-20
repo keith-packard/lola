@@ -57,12 +57,12 @@ typedef uint32_t non_terminal_index_t;
 #define PARSE_TABLE_FETCH_INDEX(addr) (*(addr))
 #endif
 
-static const token_t *
+static CONST token_t *
 match_state(token_t terminal, token_t non_terminal)
 {
 	token_key_t terminal_key = terminal;
 	if (terminal_key >= sizeof(terminal_table) / sizeof(terminal_table[0]))
-		return NULL;
+		return 0;
 	non_terminal_index_t non_term = non_terminal_index(PARSE_TABLE_FETCH_INDEX(&terminal_table[terminal_key]));
 	for (;;) {
 		uint8_t i = PARSE_TABLE_FETCH_INDEX(&non_terminal_table[non_term]);
@@ -72,14 +72,14 @@ match_state(token_t terminal, token_t non_terminal)
 		} else if (i == 0xff) {
 			break;
 		} else {
-			const token_t *production = &production_table[production_index(i)];
+			CONST token_t *production = &production_table[production_index(i)];
 			if (PARSE_TABLE_FETCH_TOKEN(production) == non_terminal) {
 				return production + 1;
 			}
 			non_term++;
 		}
 	}
-	return NULL;
+	return 0;
 }
 
 static inline token_t
@@ -91,7 +91,7 @@ parse_pop(int *parse_stack_p)
 }
 
 static inline bool
-parse_push(const token_t *tokens, int *parse_stack_p)
+parse_push(CONST token_t *tokens, int *parse_stack_p)
 {
     token_t token;
     while ((token = PARSE_TABLE_FETCH_TOKEN(tokens++)) != TOKEN_NONE) {
@@ -191,7 +191,7 @@ parse(void *lex_context)
             }
 	    token = TOKEN_NONE;
 	} else {
-	    const token_t *tokens = match_state(token, top);
+	    CONST token_t *tokens = match_state(token, top);
 
 	    if (!tokens)
 		return parse_return_syntax;
@@ -1089,6 +1089,9 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("/* %d terminals %d non_terminals %d actions (%d duplicates) %d parse table entries */" %
             (num_terminals, num_non_terminals, num_actions, count_actions(grammar) - num_actions, len(parse_table)), file=output)
     print_c("", file=output)
+    print_c("#ifndef CONST", file=output)
+    print_c("#define CONST const", file=output)
+    print_c("#endif", file=output)
     print_c("#if !defined(GRAMMAR_TABLE) && !defined(TOKEN_NAMES) && !defined(PARSE_CODE)", file=output)
     print_c("typedef enum {", file=output)
     print_c("    TOKEN_NONE = 0,", file=output)
@@ -1175,7 +1178,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
         print_c("", file=output)
     print_c(" */", file=output)
 
-    print_c("static const token_t PARSE_TABLE_DECLARATION(production_table)[] = {", file=output);
+    print_c("static CONST token_t PARSE_TABLE_DECLARATION(production_table)[] = {", file=output);
 
     prod_index = 0
     for key in parse_table:
@@ -1221,7 +1224,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
 
     print_c("#define non_terminal_index(i) ((i) << %d)" % best_shift, file=output)
 
-    print_c("static const uint8_t PARSE_TABLE_DECLARATION(non_terminal_table)[] = {", file=output)
+    print_c("static CONST uint8_t PARSE_TABLE_DECLARATION(non_terminal_table)[] = {", file=output)
 
     #
     # Dump the table mapping non-terminals to productions
@@ -1289,7 +1292,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     # to each terminal.
     #
 
-    print_c("static const uint8_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
+    print_c("static CONST uint8_t PARSE_TABLE_DECLARATION(terminal_table)[] = {", file=output)
 
     for terminal in terminals:
         terms = (terminal,)
@@ -1314,7 +1317,7 @@ def dump_c(grammar, parse_table, file=sys.stdout, filename="<stdout>"):
     print_c("#ifdef TOKEN_NAMES", file=output)
     print_c("#undef TOKEN_NAMES", file=output)
     print_c("#define token_name(a) token_names[a]", file=output);
-    print_c("static const char *const token_names[] = {", file=output)
+    print_c("static CONST char *CONST token_names[] = {", file=output)
     print_c('    0,', file=output);
     for terminal in terminals:
         print_c('    "%s",' % (terminal), file=output)
