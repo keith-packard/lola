@@ -1,3 +1,10 @@
+lola (1.8-2) unstable; urgency=medium
+
+  * Mark python3 dependency with :any
+  * Add Multi-Arch: foreign
+
+ -- Keith Packard <keithp@keithp.com>  Wed, 20 Nov 2024 13:08:41 -0800
+
 lola (1.8-1) unstable; urgency=medium
 
   * New upstream version
