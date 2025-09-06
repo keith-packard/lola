@@ -6,6 +6,8 @@ Homepage: https://keithp.com
 Build-Depends: debhelper-compat (= 13), python3:any
 Rules-Requires-Root: no
 Standards-Version: 4.7.0
+Vcs-Git: https://salsa.debian.org/debian/lola.git
+Vcs-Browser: https://salsa.debian.org/debian/lola.git
 
 Package: lola
 Architecture: all
